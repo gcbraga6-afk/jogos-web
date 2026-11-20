@@ -14,7 +14,7 @@
 #panel h1,#panel h2{margin:3px 0 8px;line-height:.99;letter-spacing:-.04em}#panel h1{font-size:clamp(2.6rem,10vw,5rem);max-width:7ch}#panel h2{font-size:clamp(1.25rem,4vw,1.8rem)}#panel p{margin:.4rem 0 .8rem;color:#c3d0c0;line-height:1.35}
 .eyebrow{font-size:.78rem;font-weight:900;letter-spacing:.17em;color:#c3ee90}.primary{background:var(--mint);color:var(--ink)}.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.menu{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.menu button{font-size:.83rem;padding:.45rem .5rem}.menu small{margin-top:3px;font-size:.72rem}.slot,.tag{position:absolute;left:0;top:0;white-space:nowrap}.slot{pointer-events:auto;min-height:32px;padding:5px 8px;border:1px solid #b5f4dc90;border-radius:6px;background:#173d3ae8;font-size:.74rem}.tag{font-weight:900;font-size:clamp(.78rem,2.7vw,1.12rem);text-align:center;padding:.12rem .45rem;border-radius:6px;background:#1a3c2eeb;color:#c9ff90;box-shadow:0 1px 6px #13272555}.tag.bad{background:#65294cef;color:#ffd4e0}.tag small{font-size:.69rem;line-height:1.1;color:inherit}.tag.damage{color:#fff5cb;background:transparent;text-shadow:0 2px 3px #451c12;box-shadow:none}.tag.army{color:#e4fbff;background:#114b6cee;font-size:1.13rem}.tag.boss{background:#632b38;color:#ffeabe}
 #callout{position:absolute;z-index:1;top:16%;left:50%;transform:translateX(-50%);pointer-events:none;text-align:center;font-weight:900;font-size:clamp(1.1rem,4vw,2.25rem);text-shadow:0 2px 6px #172822;background:#162c25d9;border-radius:9px;padding:.25rem .8rem;max-width:92%;width:max-content}
-#hint{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);text-align:center;background:#172d28dc;padding:6px 10px;border-radius:8px;pointer-events:none;max-width:94%;width:max-content;font-size:.83rem}
+#pulse{position:absolute;z-index:2;right:max(13px,env(safe-area-inset-right));bottom:max(13px,env(safe-area-inset-bottom));background:#cafa82;color:#203120;min-width:93px}#hint{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);text-align:center;background:#172d28dc;padding:6px 10px;border-radius:8px;pointer-events:none;max-width:calc(100% - 124px);width:max-content;font-size:.83rem;left:13px;transform:none}
 @media(max-height:480px){#panel{padding:8px}#panel p{margin:4px 0}#panel[data-phase=menu]{padding:14px}#panel h1{font-size:2.5rem}}
 </style>
 </head>
@@ -25,7 +25,7 @@
   <div><strong id="life">Base 100%</strong><div id="hp"><i></i></div></div><strong id="stage"></strong>
   <div class="row"><button id="sound" aria-label="Silenciar som" aria-pressed="false">Som</button><button id="pause">Pausa</button></div>
  </header>
- <div id="callout" hidden></div><div id="hint" hidden>Arraste para mirar. Atire nos portais ou segure a horda.</div>
+ <div id="callout" hidden></div><div id="hint" hidden>Mire nos portais para recrutar. Aperte Espaço para disparar um pulso.</div><button id="pulse" hidden aria-label="Disparar pulso na mira">Pulso</button>
  <section id="panel" data-phase="menu"><p>Carregando o campo 3D…</p></section>
 </main>
 <script type="module">
@@ -59,8 +59,8 @@ const gates={
 // tipo, quantidade, caminho (0 = oeste, 1 = leste), entrada, intervalo
 const waves=[
  {preview:'Oeste · corredores. Leste · enxame.',groups:[
-  ['runner',11,0,.9,.39],['swarm',10,1,4.2,.46],['runner',9,1,9.3,.36],['swarm',12,0,12.1,.39]],
-  offers:[['five',0,1.1],['ten',1,1.1],['rapid',1,9.2],['minus',0,9.2]]},
+  ['runner',11,0,.15,.32],['swarm',10,1,1.95,.38],['runner',9,1,9.3,.36],['swarm',12,0,12.1,.39]],
+  offers:[['five',0,.44],['ten',1,.44],['rapid',1,9.2],['minus',0,9.2]]},
  {preview:'Oeste · escudeiros. Leste · blindados.',groups:[
   ['shield',4,0,.9,.86],['swarm',20,0,1.8,.27],['runner',17,1,3.8,.31],['armor',4,1,7.9,.85],['runner',13,0,11.4,.34]],
   offers:[['half',0,2.2],['ten',1,2.2],['free',0,10.1],['rapid',1,10.1]]},
@@ -83,7 +83,7 @@ function persist(){
 }
 function newRun(){
  return {wave:0,phase:'prep',health:100,army:8,slots:slots.map(()=>null),free:0,aim:{x:0,z:-8},
-  foes:[],gates:[],bolts:[],schedule:[],cursor:0,clock:0,gunClock:0,boost:0,power:1,serial:0,kills:0};
+  foes:[],gates:[],bolts:[],schedule:[],cursor:0,clock:0,gunClock:0,boost:0,pulse:0,power:1,serial:0,kills:0};
 }
 let run=profile.run||newRun(), phase='menu', activeSlot=-1, soundSystem=null;
 let note='',noteLeft=0,shake=0,freeze=0,slow=0, red=0,rendering=null, savedClock=0;
@@ -219,7 +219,7 @@ function advanceBolts(dt){
  run.bolts=keep;
 }
 function updateGame(dt){
- run.clock+=dt;run.boost=Math.max(0,run.boost-dt);
+ run.clock+=dt;run.boost=Math.max(0,run.boost-dt);run.pulse=Math.max(0,(run.pulse??0)-dt);
  while(run.cursor<run.schedule.length&&run.schedule[run.cursor].time<=run.clock)spawn(run.schedule[run.cursor++]);
  for(const g of run.gates){g.z+=4.15*dt;g.flash=Math.max(0,g.flash-dt);}
  for(const e of run.foes){
@@ -300,8 +300,25 @@ function startNew(){
  void enableAudio();
  run=newRun();phase='prep';activeSlot=-1;
  debris.length=0;numbers.length=0;shake=red=freeze=slow=0;noteLeft=0;
- snapshot();refresh();
+ begin();
 }
+function firePulse(){
+ if(phase!=='wave'||(run.pulse??0)>0)return;
+ run.pulse=8;
+ const center={...run.aim};
+ for(const enemy of run.foes){
+  if(distance(center,enemy)<=3.9)damage(enemy,65,'bomb');
+ }
+ for(const gate of run.gates){
+  if(gate.hp<=0||distance(center,gate)>3.9)continue;
+  gate.hp=Math.max(0,gate.hp-4);gate.flash=.14;
+  if(!gate.hp)applyGate(gate);
+ }
+ burst(center.x,center.z,0xffc769,31);
+ debris.push({x:center.x,z:center.z,y:.15,vx:0,vz:0,vy:0,life:.5,color:0xffdc76,ring:true});
+ freeze=.045;shake=Math.max(.32,shake);audio('impact');
+}
+$('pulse').onclick=firePulse;
 function pause(){
  if(phase==='paused'){phase=run.phase;void enableAudio();}
  else if(['wave','prep','reward'].includes(phase)){phase='paused';snapshot();}
@@ -314,6 +331,7 @@ function refresh(){
  $('sound').textContent=profile.muted?'Mudo':'Som';
  $('sound').setAttribute('aria-pressed',String(profile.muted));
  $('sound').setAttribute('aria-label',profile.muted?'Ativar som':'Silenciar som');
+ $('pulse').hidden=phase!=='wave';
  if(phase==='menu'){
   const options=[button('Jogar',startNew,{primary:true})];
   if(profile.run&&['prep','wave','reward'].includes(run.phase))options.unshift(button('Continuar',restored,{primary:true}));
@@ -356,6 +374,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&phase==='w
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!e.repeat){pause();return;}
  if(phase!=='wave'||!rendering)return;
+ if(e.code==='Space'&&!e.repeat&&e.target.tagName!=='BUTTON'){e.preventDefault();firePulse();return;}
  const moves={ArrowLeft:[-.7,0],ArrowRight:[.7,0],ArrowUp:[0,-.9],ArrowDown:[0,.9]};
  if(moves[e.key]){
   e.preventDefault();
@@ -420,10 +439,11 @@ function createScene(T){
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.outputColorSpace=T.SRGBColorSpace;
  renderer.setClearColor(0x96ad9d);renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.28;
  world.append(renderer.domElement);
- const camera=new T.OrthographicCamera(-15,15,22,-22,.1,140);
- const viewTarget=new T.Vector3(0,0,-8);
- camera.position.set(0,38,33);camera.lookAt(viewTarget);
- scene.fog=new T.FogExp2(0xa9bfaa,.008);
+ const camera=new T.PerspectiveCamera(52,1,.1,145);
+ const viewTarget=new T.Vector3(0,3,-10);
+ const cameraHome=new T.Vector3(0,14.8,29);
+ camera.position.copy(cameraHome);camera.lookAt(viewTarget);
+ scene.fog=new T.FogExp2(0xa9bfaa,.012);
  scene.add(new T.HemisphereLight(0xfff9d4,0x617e7a,2.05));
  const key=new T.DirectionalLight(0xffe3b2,2.4);key.position.set(-18,28,11);scene.add(key);
  const materials=new Map();
@@ -439,7 +459,17 @@ function createScene(T){
   mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);parent.add(mesh);return mesh;
  }
  const block=(color,x,y,z,w,h,d,parent)=>object(box,color,x,y,z,w,h,d,parent);
- block(0x789e91,0,-.77,-5,150,.6,140);
+ block(0x457d85,0,-.77,-5,150,.6,140);
+ for(let i=0;i<62;i++){
+  const side=i%2===0?1:-1;
+  block(i%3===0?0x91c2b9:0x56919a,side*(14+(i%17)*1.33),-.457,-37+(i*7.13)%58,1.1+i%5,.01,.065);
+ }
+ for(const side of [-1,1]){
+  block(0x687b73,side*6.2,.77,-34.1,1.32,2.18,3.7);
+  block(0x687b73,side*11.1,1.03,-33.6,1.3,2.67,3.9);
+  block(0xddc38f,side*8.65,2.71,-34,6.1,.57,1.58);
+  block(0x4c6966,side*8.65,3.02,-34,6.14,.12,1.61);
+ }
  block(0xc8c5a7,0,-.3,-8,25,.55,55);
  for(let z=-34;z<=17;z+=2){
   block(0xaaa98e,0,-.011,z,24,.021,.037);
@@ -518,8 +548,10 @@ function createScene(T){
   const mesh=new T.InstancedMesh(geometry,mat,num);mesh.count=0;mesh.frustumCulled=false;scene.add(mesh);return mesh;
  }
  const bodies=batch(box,350),heads=batch(cap,350),limbs=batch(box,730),armor=batch(box,350),shadows=batch(floor,350,false);
+ const pulseGeometry=new T.RingGeometry(.83,1,32);pulseGeometry.rotateX(-Math.PI/2);
+ const rings=batch(pulseGeometry,4,false);
  const boltMeshes=batch(cap,540,false),dust=batch(chip,290),portalBodies=batch(box,12),portalGlow=batch(box,30,false);
- const meshes=[bodies,heads,limbs,armor,shadows,boltMeshes,dust,portalBodies,portalGlow];
+ const meshes=[bodies,heads,limbs,armor,shadows,boltMeshes,dust,portalBodies,portalGlow,rings];
  function instance(mesh,color,x,y,z,sx,sy,sz,yaw=0){
   if(mesh.count>=mesh.instanceMatrix.count)return;
   matrix.position.set(x,y,z);matrix.rotation.set(0,yaw,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();
@@ -577,15 +609,18 @@ function createScene(T){
  function resize(){
   const w=world.clientWidth,h=world.clientHeight;
   if(!w||!h)return;
-  const ratio=w/h,span=Math.max(19,13.2/ratio);
-  camera.top=span;camera.bottom=-span;camera.left=-span*ratio;camera.right=span*ratio;
+  const ratio=w/h;
+  camera.aspect=ratio;
+  camera.fov=ratio<.85?61:50;
+  cameraHome.set(0,ratio<.85?17.8:14.8,ratio<.85?34:29);
   camera.updateProjectionMatrix();renderer.setSize(w,h,false);
  }
  window.addEventListener('resize',resize);resize();
  function draw(){
   const t=run.clock;
-  camera.position.x=Math.sin(performance.now()*.064)*shake;
-  camera.position.y=38+Math.cos(performance.now()*.076)*shake*.54;
+  camera.position.copy(cameraHome);
+  camera.position.x+=Math.sin(performance.now()*.064)*shake;
+  camera.position.y+=Math.cos(performance.now()*.076)*shake*.54;
   camera.lookAt(viewTarget);camera.updateMatrixWorld();
   for(const mesh of meshes)mesh.count=0;
   for(const node of markerNodes.values())node.seen=false;
@@ -593,7 +628,7 @@ function createScene(T){
   const army=Math.min(50,run.army);
   for(let i=0;i<army;i++){
    const row=Math.floor(i/10),count=Math.min(10,army-row*10);
-   character((i%10-(count-1)/2)*.64,BASE+row*.61,.73,i===0?0x7feaf4:0x41afd9,yaw,t*17+i,'ally',false);
+   character((i%10-(count-1)/2)*.67,BASE+row*.61,.90,i===0?0x7feaf4:0x41afd9,yaw,t*17+i,'ally',false);
   }
   for(const e of run.foes){
    const data=enemyTypes[e.type];
@@ -617,12 +652,17 @@ function createScene(T){
    instance(boltMeshes,b.color,b.x,height,b.z,width,width,arc?.27:.39,yaw);
   }
   for(const p of debris){
+   if(p.ring){
+    const scale=3.9*(1-p.life/.5)+.5;
+    instance(rings,p.color,p.x,.09,p.z,scale,1,scale);
+    continue;
+   }
    const size=p.flash?.69:Math.max(.08,p.life*.47);
    instance(p.flash?boltMeshes:dust,p.color,p.x,p.y,p.z,size,size,size);
   }
   let index=0;
   for(const n of numbers)tag('d'+index++,n.label,'',n.x,1.5+(1-n.life/.55)*2.2,n.z,'damage',{opacity:Math.min(1,n.life*5)});
-  if(phase!=='menu')tag('army',run.army+' soldados',run.boost>0?'Cadência ×2 · '+Math.ceil(run.boost)+'s':'',0,1.8,BASE+3.2,'army');
+  if(phase!=='menu')tag('army',run.army+' soldados',run.boost>0?'Cadência ×2 · '+Math.ceil(run.boost)+'s':'',0,2.35,BASE+1.15,'army');
   slots.forEach((s,i)=>{
    const tower=run.slots[i],visual=stationMeshes[i],btn=slotButtons[i];
    btn.hidden=phase!=='prep';btn.textContent=tower?'Nível '+tower.level:'Construir';btn.style.zIndex=1;
@@ -671,6 +711,9 @@ function animation(now){
   $('life').textContent='Base '+run.health+'%';
   $('hp').firstElementChild.style.width=run.health+'%';
   $('stage').textContent='Onda '+(run.wave+1)+' / '+TOTAL;
+  const cooldown=Math.ceil(run.pulse??0);
+  $('pulse').textContent=cooldown?'Pulso · '+cooldown+'s':'Pulso';
+  $('pulse').disabled=cooldown>0;
   $('callout').hidden=noteLeft<=0||phase==='menu'||phase==='paused';
   $('callout').textContent=note;
  }
