@@ -25,7 +25,7 @@
   <div><strong id="life">Base 100%</strong><div id="hp"><i></i></div></div><strong id="stage"></strong>
   <div class="row"><button id="sound" aria-label="Silenciar som" aria-pressed="false">Som</button><button id="pause">Pausa</button></div>
  </header>
- <div id="callout" hidden></div><div id="hint" hidden>A/D ou setas para mover. Mouse para mirar. No celular, arraste. Espaço dispara o pulso.</div><button id="pulse" hidden aria-label="Disparar pulso na mira">Pulso</button>
+ <div id="callout" hidden></div><div id="hint" hidden>Arraste para mover e mirar. No teclado, A/D ou setas movem e Espaço dispara o pulso.</div><button id="pulse" hidden aria-label="Disparar pulso na mira">Pulso</button>
  <section id="panel" data-phase="menu"><p>Carregando o campo 3D…</p></section>
 </main>
 <script type="module">
@@ -33,7 +33,7 @@ const $=id=>document.getElementById(id);
 const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
 const random=(lo,hi)=>lo+Math.random()*(hi-lo);
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
-const BASE=11, FRONT=-29, TOTAL=3, STEP=1/60;
+const BASE=11, FRONT=-29, ENTRY=-21, TOTAL=3, STEP=1/60;
 const slots=[{x:-9,z:-10},{x:0,z:-3},{x:9,z:-10},{x:-7,z:5},{x:7,z:5}];
 const enemyTypes={
  runner:{name:'Corredores',hp:19,speed:5.8,r:.48,scale:.85,color:0xff4d40,breach:3},
@@ -59,7 +59,7 @@ const gates={
 // tipo, quantidade, caminho (0 = oeste, 1 = leste), entrada, intervalo
 const waves=[
  {preview:'Oeste · corredores. Leste · enxame.',groups:[
-  ['runner',11,0,.15,.32],['swarm',10,1,1.95,.38],['runner',9,1,9.3,.36],['swarm',12,0,12.1,.39]],
+  ['runner',11,0,0,.24],['swarm',10,1,1.95,.38],['runner',9,1,9.3,.36],['swarm',12,0,12.1,.39]],
   offers:[['five',0,.44],['ten',1,.44],['rapid',1,9.2],['minus',0,9.2]]},
  {preview:'Oeste · escudeiros. Leste · blindados.',groups:[
   ['shield',4,0,.9,.86],['swarm',20,0,1.8,.27],['runner',17,1,3.8,.31],['armor',4,1,7.9,.85],['runner',13,0,11.4,.34]],
@@ -107,14 +107,14 @@ function routeX(route,z){
 function spawn(event){
  if(event.offer){
   const data=gates[event.offer];
-  run.gates.push({id:++run.serial,type:event.offer,x:routeX(event.route,FRONT)+ (event.route===0?-1:1)*1.65,
-   z:FRONT,hp:data.hp,max:data.hp,flash:0});
+  run.gates.push({id:++run.serial,type:event.offer,x:routeX(event.route,ENTRY)+ (event.route===0?-1:1)*1.65,
+   z:ENTRY,hp:data.hp,max:data.hp,flash:0});
   return;
  }
  const data=enemyTypes[event.type];
  const hp=Math.round(data.hp*(1+run.wave*.07));
- run.foes.push({id:++run.serial,type:event.type,route:event.route,x:routeX(event.route,FRONT)+event.offset,
-  offset:event.offset,z:FRONT,hp,max:hp,flash:0,force:0,nextAttack:3.8,warning:0});
+ run.foes.push({id:++run.serial,type:event.type,route:event.route,x:routeX(event.route,ENTRY)+event.offset,
+  offset:event.offset,z:ENTRY+(run.wave===0&&event.time<1.25?4:0),hp,max:hp,flash:0,force:0,nextAttack:3.8,warning:0});
  if(event.type==='boss'){signal('COLOSSO NA BARRAGEM',2);shake=.42;audio('alarm');}
 }
 function applyGate(g){
@@ -477,14 +477,14 @@ function updateFx(dt){
 function createScene(T){
  const world=$('world'),scene=new T.Scene(), renderer=new T.WebGLRenderer({antialias:true});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.outputColorSpace=T.SRGBColorSpace;
- renderer.setClearColor(0x96ad9d);renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.28;
+ renderer.setClearColor(0x96ad9d);renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
  world.append(renderer.domElement);
  const camera=new T.PerspectiveCamera(52,1,.1,145);
- const viewTarget=new T.Vector3(0,3,-10);
- const cameraHome=new T.Vector3(0,14.8,29);
+ const viewTarget=new T.Vector3(0,-1.5,-10);
+ const cameraHome=new T.Vector3(0,15.8,29);
  camera.position.copy(cameraHome);camera.lookAt(viewTarget);
  scene.fog=new T.FogExp2(0xa9bfaa,.012);
- scene.add(new T.HemisphereLight(0xfff9d4,0x617e7a,2.05));
+ scene.add(new T.HemisphereLight(0xfff2d8,0x7a97b0,1.83));
  const key=new T.DirectionalLight(0xffe3b2,2.4);key.position.set(-18,28,11);scene.add(key);
  const materials=new Map();
  function material(color){
@@ -578,7 +578,7 @@ function createScene(T){
   return {turret,body,head,trim};
  }
  const stationMeshes=slots.map(station);
- const hero=new T.Group();scene.add(hero);
+ const hero=new T.Group();hero.scale.setScalar(1.24);scene.add(hero);
  const core=new T.Group();hero.add(core);
  function heroPiece(shape,color,x,y,z,w,h,d,parent=core){return object(shape,color,x,y,z,w,h,d,parent);}
  const heroShadow=heroPiece(floor,0x777960,0,.049,0,1.06,1,.63,hero);
@@ -613,12 +613,14 @@ function createScene(T){
  const matrix=new T.Object3D(),tint=new T.Color();
  function batch(geometry,num,light=true){
   const mat=light?new T.MeshLambertMaterial({color:0xffffff,flatShading:true}):new T.MeshBasicMaterial({color:0xffffff});
-  const mesh=new T.InstancedMesh(geometry,mat,num);mesh.count=0;mesh.frustumCulled=false;scene.add(mesh);return mesh;
+  const mesh=new T.InstancedMesh(geometry,mat,num);
+  mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  mesh.count=0;mesh.frustumCulled=false;scene.add(mesh);return mesh;
  }
  const bodies=batch(box,350),heads=batch(cap,350),limbs=batch(box,730),armor=batch(box,350),shadows=batch(floor,350,false);
  const pulseGeometry=new T.RingGeometry(.83,1,32);pulseGeometry.rotateX(-Math.PI/2);
  const rings=batch(pulseGeometry,4,false);
- const boltMeshes=batch(cap,540,false),dust=batch(chip,290),portalBodies=batch(box,12),portalGlow=batch(box,30,false);
+ const boltMeshes=batch(cap,820,false),dust=batch(chip,290),portalBodies=batch(box,12),portalGlow=batch(box,30,false);
  const meshes=[bodies,heads,limbs,armor,shadows,boltMeshes,dust,portalBodies,portalGlow,rings];
  function instance(mesh,color,x,y,z,sx,sy,sz,yaw=0){
   if(mesh.count>=mesh.instanceMatrix.count)return;
@@ -634,6 +636,7 @@ function createScene(T){
   instance(limbs,ally?0x153c56:0x48312f,x+.18*scale,.19*scale,z-stride,.24*scale,.38*scale,.31*scale,yaw);
   instance(bodies,f,x,.58*scale+bob,z,width*scale,(flash?.48:.58)*scale,.55*scale,yaw);
   instance(heads,ally?0x348fbe:f,x,1.04*scale+bob,z,.68*scale,.57*scale,.68*scale,yaw);
+  if(!ally)instance(armor,0x55263a,x,1.035*scale+bob,z+.31*scale,.36*scale,.10*scale,.09*scale,yaw);
   if(ally){
    const px=x+Math.sin(yaw)*.37*scale,pz=z-Math.cos(yaw)*.37*scale;
    instance(armor,0x1c394f,px,.79*scale,pz,.20*scale,.19*scale,.74*scale,yaw);
@@ -663,6 +666,7 @@ function createScene(T){
   point.set(x,y,z).project(camera);
   node.style.transform='translate3d('+((point.x*.5+.5)*world.clientWidth)+'px,'+((.5-point.y*.5)*world.clientHeight)+'px,0) translate(-50%,-50%)';
  }
+ let dragPointer=null,dragStartX=0,dragHeroX=0;
  function aim(event){
   if(phase!=='wave')return;
   const rect=renderer.domElement.getBoundingClientRect();
@@ -670,18 +674,29 @@ function createScene(T){
   ray.setFromCamera(cursor,camera);
   if(ray.ray.intersectPlane(ground,point)){
    run.aim.x=clamp(point.x,-15,15);run.aim.z=clamp(point.z,FRONT-1,BASE-3);
-   if(event.pointerType==='touch')run.heroTarget=clamp(point.x,-7,7);
+  }
+  if(dragPointer===event.pointerId){
+   const worldWidth=Math.min(26,18*camera.aspect+10);
+   run.heroTarget=clamp(dragHeroX+(event.clientX-dragStartX)/rect.width*worldWidth,-7,7);
   }
  }
  renderer.domElement.onpointermove=aim;
- renderer.domElement.onpointerdown=event=>{renderer.domElement.setPointerCapture(event.pointerId);aim(event);void enableAudio();};
+ renderer.domElement.onpointerdown=event=>{
+  if(phase!=='wave'||(event.pointerType==='mouse'&&event.button!==0))return;
+  dragPointer=event.pointerId;dragStartX=event.clientX;dragHeroX=run.heroX??0;
+  renderer.domElement.setPointerCapture(event.pointerId);aim(event);void enableAudio();
+ };
+ function release(event){if(dragPointer===event.pointerId)dragPointer=null;}
+ renderer.domElement.onpointerup=release;
+ renderer.domElement.onpointercancel=release;
+ renderer.domElement.onlostpointercapture=release;
  function resize(){
   const w=world.clientWidth,h=world.clientHeight;
   if(!w||!h)return;
   const ratio=w/h;
   camera.aspect=ratio;
   camera.fov=ratio<.85?61:50;
-  cameraHome.set(0,ratio<.85?17.8:14.8,ratio<.85?34:29);
+  cameraHome.set(0,ratio<.85?17.6:15.8,ratio<.85?32:29);
   camera.updateProjectionMatrix();renderer.setSize(w,h,false);
  }
  window.addEventListener('resize',resize);resize();
@@ -712,7 +727,8 @@ function createScene(T){
   }
   for(const e of run.foes){
    const data=enemyTypes[e.type];
-   character(e.x,e.z,data.scale,data.color,Math.PI,t*(e.type==='boss'?7:14)+e.id,e.type,e.flash>0);
+   const scale=data.scale*(e.type==='boss'?1.18:1.30);
+   character(e.x,e.z,scale,data.color,Math.PI,t*(e.type==='boss'?7:14)+e.id,e.type,e.flash>0);
    if(e.type==='boss'||e.max>=70&&e.hp<e.max){
     tag('e'+e.id,e.type==='boss'?'COLOSSO':'',Math.max(0,Math.round(e.hp/e.max*100))+'%',e.x,1.43*data.scale,e.z,e.type==='boss'?'boss':'bad');
    }
@@ -733,9 +749,13 @@ function createScene(T){
   }
   for(const b of run.bolts){
    const arc=b.type==='bomb',height=arc?.6+Math.sin(Math.PI*b.t)*3.7:.68;
-   const width=arc?.27:b.type==='shot'?.11:.14;
+   const width=arc?.53:b.type==='shot'?.22:.31;
    const yaw=arc?0:Math.atan2(b.dx,b.dz);
-   instance(boltMeshes,b.color,b.x,height,b.z,width,width,arc?.27:.39,yaw);
+   const length=arc?.58:b.type==='shot'?.63:1.13;
+   const outline=b.type==='peloton'?0xeb650f:b.type==='mg'?0x138fbd:0xb640eb;
+   instance(boltMeshes,outline,b.x,height,b.z,width*1.46,width*1.46,length*1.18,yaw);
+   instance(boltMeshes,b.color,b.x,height+.05,b.z,width,width,length,yaw);
+   instance(boltMeshes,0xfff6d8,b.x,height+.10,b.z,width*.45,width*.45,length*.59,yaw);
   }
   for(const p of debris){
    if(p.ring){
@@ -766,6 +786,11 @@ function createScene(T){
   cross.visible=phase==='wave';cross.position.set(run.aim.x,.077,run.aim.z);
   const boss=run.foes.find(e=>e.type==='boss'&&e.warning>0);
   warning.visible=!!boss;if(boss)warning.position.x=boss.attackX??0;warning.material.opacity=.5+.32*Math.sin(t*22);
+  for(const mesh of meshes){
+   if(!mesh.count)continue;
+   mesh.instanceMatrix.needsUpdate=true;
+   if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+  }
   renderer.render(scene,camera);
  }
  return {draw};
