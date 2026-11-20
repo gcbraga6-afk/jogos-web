@@ -16,6 +16,7 @@
 #callout{position:absolute;z-index:1;top:16%;left:50%;transform:translateX(-50%);pointer-events:none;text-align:center;font-weight:900;font-size:clamp(1.1rem,4vw,2.25rem);text-shadow:0 2px 6px #172822;background:#162c25d9;border-radius:9px;padding:.25rem .8rem;max-width:92%;width:max-content}
 #pulse{position:absolute;z-index:2;right:max(13px,env(safe-area-inset-right));bottom:max(13px,env(safe-area-inset-bottom));background:#cafa82;color:#203120;min-width:93px}#hint{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);text-align:center;background:#172d28dc;padding:6px 10px;border-radius:8px;pointer-events:none;max-width:calc(100% - 124px);width:max-content;font-size:.83rem;left:13px;transform:none}
 .card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:.8rem .5rem;background:linear-gradient(160deg,#25433c,#172b27);border:1px solid #cafb8355}.card svg{width:54px;height:54px;fill:var(--mint);filter:drop-shadow(0 3px 0 #0b1a17)}.card:hover:enabled{background:linear-gradient(160deg,#2f5a4f,#1c3530)}.slot.mini{min-height:34px;min-width:34px;padding:2px 8px;font-size:1rem;border-radius:50%;background:#173d3acc}
+.gunbadge{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;border-radius:10px;background:#132725ee;border:1px solid #cafb8366;font-weight:900;font-size:.8rem;color:#e9ffd0;white-space:nowrap}.gunbadge svg{width:34px;height:34px;fill:var(--mint)}
 @media(max-height:480px){#panel{padding:8px}#panel p{margin:4px 0}#panel[data-phase=menu]{padding:14px}#panel h1{font-size:2.5rem}}
 </style>
 </head>
@@ -137,7 +138,16 @@ const GUNS={
  grenade:{name:'Lança-granadas',rate:.85,damage:.9,pellets:1,pierce:1,style:'grenade'},
  pierce:{name:'Rifle perfurante',rate:.72,damage:1.25,pellets:1,pierce:3,style:'plain'}
 };
+// Cara de cada arma na tela: cor e formato dos tiros do pelotão.
+const GUN_LOOK={
+ rifle:{core:0xffec9e,glow:0xb8862f,w:.085,l:.95},
+ mg:{core:0x9ff6ff,glow:0x1e8fd0,w:.07,l:.6},
+ shotgun:{core:0xffb04a,glow:0xc2461b,w:.2,l:.32},
+ grenade:{core:0xd9a9ff,glow:0x7a3fc4,w:.11,l:.7},
+ pierce:{core:0xff7cf0,glow:0x9a1fb0,w:.11,l:2.4}
+};
 const ICON_PATHS={
+ rifle:'<rect x="3" y="21" width="18" height="8" rx="2"/><rect x="20" y="22" width="24" height="4"/><rect x="10" y="29" width="6" height="9" rx="2"/>',
  mg:'<rect x="4" y="20" width="30" height="9" rx="2"/><rect x="34" y="22" width="11" height="4"/><rect x="34" y="27" width="11" height="2"/><rect x="12" y="29" width="7" height="11" rx="2"/><rect x="21" y="29" width="6" height="7"/><circle cx="24" cy="16" r="4"/>',
  shotgun:'<rect x="3" y="20" width="16" height="9" rx="3"/><rect x="17" y="21" width="28" height="4"/><rect x="17" y="26" width="28" height="3"/><rect x="24" y="29" width="10" height="5" rx="2"/>',
  grenade:'<rect x="5" y="21" width="22" height="8" rx="2"/><rect x="24" y="17" width="20" height="15" rx="4"/><rect x="11" y="29" width="7" height="10" rx="2"/><circle cx="40" cy="12" r="5"/>',
@@ -244,7 +254,10 @@ function begin(){
  queue.push(...plan.offers.map(([offer,route,time])=>({offer,route,time})));
  run.schedule=queue.sort((a,b)=>a.time-b.time);
  Object.assign(run,{phase:'wave',clock:0,soldierClocks:[],soldierShotAt:[],cursor:0,boost:0,bolts:[],foes:[],gates:[],supply:null,supplySent:false});
- phase='wave';activeSlot=-1;signal('ONDA '+(run.wave+1),1.4);snapshot();refresh();
+ phase='wave';activeSlot=-1;
+ if(run.newGun){run.newGun=false;signal('NOVA ARMA: '+GUNS[run.gun].name.toUpperCase(),2.2);}
+ else signal('ONDA '+(run.wave+1),1.4);
+ snapshot();refresh();
 }
 function routeX(route,z){
  return (route===0?-1:1)*(4.15+.95*Math.sin((z+29)*.145)+.38*Math.sin(z*.34));
@@ -347,7 +360,7 @@ function fire(x,z,target,type,amount,spread=0,pellets=1,pierce=1){
   }
  }
  if(type!=='peloton')debris.push({x,z,y:.9,vx:0,vz:0,vy:0,life:.07,color,flash:true});
- audio(type==='peloton'?'mg':type);
+ audio(type==='peloton'?(run.gun==='shotgun'||run.gun==='pierce'?'shot':'mg'):type);
 }
 function advanceBolts(dt){
  const keep=[];
@@ -456,7 +469,7 @@ function firePeloton(dt){
    fire(x,z,{x:target.x,z:target.z+1.2},'bomb',damage*2.2);
   }else{
    fire(x,z,{x:target.x+random(-.25,.25),z:target.z,gateId:target.gateId},'peloton',damage,
-    gun.pellets>1?.09:0,gun.pellets,gun.pierce);
+    gun.pellets>1?.16:0,gun.pellets,gun.pierce);
   }
   (run.soldierShotAt??=[])[i]=run.clock;
   clocks[i]=time+SOLDIER_INTERVAL+random(-.038,.038);
@@ -619,7 +632,7 @@ function refresh(){
   panel('Escolha sua recompensa','Arma atual: '+GUNS[run.gun??'rifle'].name+'.',run.offer.map(id=>{
    const reward=rewardPool.find(r=>r.id===id);
    const el=button(reward.title,()=>{
-    if(reward.gun)run.gun=reward.gun;else reward.apply();
+    if(reward.gun){run.gun=reward.gun;run.newGun=true;}else reward.apply();
     run.offer=null;run.wave++;phase=run.phase='prep';run.bolts=[];activeSlot=-1;snapshot();refresh();
    },{detail:reward.detail});
    el.classList.add('card');el.insertAdjacentHTML('afterbegin',icon(reward.icon));
@@ -884,6 +897,7 @@ function createScene(T){
   return 1;
  }
  const markerNodes=new Map(),point=new T.Vector3();
+ const gunBadge=document.createElement('div');gunBadge.className='gunbadge';$('tags').append(gunBadge);let badgeGun='';
  const slotButtons=slots.map((s,i)=>{
   const btn=button('Construir',()=>{if(['prep','wave'].includes(phase)){activeSlot=activeSlot===i?-1:i;refresh();}});
   btn.className='slot';$('tags').append(btn);return btn;
@@ -979,7 +993,9 @@ function createScene(T){
   }
   for(const b of run.bolts){
    if(b.type==='peloton'){
-    instance(boltMeshes,0xffec9e,b.x,.89,b.z,.085,.085,.95,Math.atan2(b.dx,b.dz));
+    const look=GUN_LOOK[run.gun??'rifle'],yaw=Math.atan2(b.dx,b.dz);
+    instance(boltMeshes,look.glow,b.x,.89,b.z,look.w*2.2,look.w*2.2,look.l*1.15,yaw);
+    instance(boltMeshes,look.core,b.x,.9,b.z,look.w,look.w,look.l,yaw);
     continue;
    }
    const arc=b.type==='bomb',height=arc?.6+Math.sin(Math.PI*b.t)*3.7:.68;
@@ -1002,8 +1018,14 @@ function createScene(T){
   }
   let index=0;
   for(const n of numbers)tag('d'+index++,n.label,'',n.x,1.5+(1-n.life/.55)*2.2,n.z,'damage',{opacity:Math.min(1,n.life*5)});
-  if(phase!=='menu')tag('army',run.army+' soldados',(GUNS[run.gun??'rifle'].name)+(run.boost>0?' · ×2 '+Math.ceil(run.boost)+'s':''),
+  if(phase!=='menu')tag('army',run.army+' soldados',run.boost>0?'Cadência ×2 · '+Math.ceil(run.boost)+'s':'',
    heroX,2.72,heroZ,'army',{scale:1+.3*armyPunch/.2});
+  gunBadge.hidden=phase==='menu';
+  if(!gunBadge.hidden){
+   const gun=run.gun??'rifle';
+   if(badgeGun!==gun){badgeGun=gun;gunBadge.innerHTML=icon(gun)+'<span>'+GUNS[gun].name+'</span>';}
+   position(gunBadge,heroX+3.3,1.2,heroZ);
+  }
   for(const reward of gateRewards){
    const progress=1-(reward.life/.65)**2;
    tag('reward'+reward.id,'+'+reward.value+'!','',reward.gx+(heroX-reward.gx)*progress,
