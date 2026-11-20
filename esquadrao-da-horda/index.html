@@ -36,6 +36,8 @@ const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
 const random=(lo,hi)=>lo+Math.random()*(hi-lo);
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const BASE=11, FRONT=-29, ENTRY=-21, TOTAL=6, STEP=1/60;
+// Exército esperado em cada onda: se você estiver acima, a horda fica mais resistente; abaixo, mais frágil.
+const EXPECTED_ARMY=[10,16,24,32,40,50];
 const MAX_VISIBLE_ARMY=60, SOLDIER_DAMAGE=9, SOLDIER_INTERVAL=.35;
 const FIELD={left:-7.6,right:7.6,front:3,back:13,speed:12};
 const SPRITES={
@@ -139,7 +141,7 @@ const enemyTypes={
  swarm:{name:'Enxame',hp:17,speed:4.2,r:.53,scale:1,color:0xff7a3d,breach:4,loss:2},
  armor:{name:'Blindados',hp:145,speed:2.35,r:.84,scale:1.42,color:0xa01d45,breach:14,loss:8},
  shield:{name:'Escudeiros',hp:88,speed:2.8,r:.74,scale:1.22,color:0xe84a76,breach:9,loss:4},
- boss:{name:'Colosso',hp:780,speed:1.5,r:1.42,scale:2.35,color:0xe5303f,breach:45,loss:20}
+ boss:{name:'Colosso',hp:780,speed:1.5,r:1.42,scale:2.35,color:0xe5303f,breach:40,loss:12}
 };
 const towers={
  mg:{name:'Metralhadora',cost:5,color:0x4bd3ee,range:11,detail:'Fogo concentrado'},
@@ -263,7 +265,7 @@ function snapshot(){profile.run=run;persist();}
 function begin(){
  const plan=waves[run.wave];
  const queue=plan.groups.flatMap(([type,count,route,start,every])=>{
-  const scale=type==='boss'?1:4,lanes=currentMap().routes.length;
+  const scale=type==='boss'?1:[2,2,3,3,3,4][run.wave],lanes=currentMap().routes.length;
   route=Math.floor(Math.random()*lanes);
   return Array.from({length:count*scale},(_,i)=>({
    time:Math.max(0,start+Math.floor(i/scale)*every*1.75+(i%scale)*.075+random(-.055,.055)),type,
@@ -273,9 +275,12 @@ function begin(){
  const lanes=currentMap().routes.length,first=Math.floor(Math.random()*lanes);
  queue.push(...plan.offers.map(([offer,,time],i)=>({offer,route:(first+i)%lanes,time})));
  run.schedule=queue.sort((a,b)=>a.time-b.time);
+ const floor=6+run.wave*3;
+ if(run.army<floor){run.army=floor;run.reinforced=true;}
  Object.assign(run,{phase:'wave',clock:0,soldierClocks:[],soldierShotAt:[],cursor:0,boost:0,bolts:[],foes:[],gates:[],supply:null,supplySent:false});
  phase='wave';activeSlot=-1;
  if(run.newGun){run.newGun=false;signal('NOVA ARMA: '+GUNS[run.gun].name.toUpperCase(),2.2);}
+ else if(run.reinforced){run.reinforced=false;signal('REFORÇOS CHEGARAM: '+run.army+' SOLDADOS',2);}
  else signal('ONDA '+(run.wave+1)+' · '+currentMap().name.toUpperCase(),1.6);
  snapshot();refresh();
 }
@@ -291,7 +296,9 @@ function spawn(event){
   return;
  }
  const data=enemyTypes[event.type];
- const hp=Math.round(data.hp*(1+run.wave*.07)*(event.type==='boss'&&run.wave===5?1.65:1));
+ const expected=EXPECTED_ARMY[run.wave]??50;
+ const catchUp=clamp(Math.sqrt(run.army*run.power*GUNS[run.gun??'rifle'].damage*GUNS[run.gun??'rifle'].rate/expected),.75,1.9);
+ const hp=Math.round(data.hp*(1+run.wave*.12)*catchUp*(event.type==='boss'?(run.wave===5?1.45:.7):1));
  run.foes.push({id:++run.serial,type:event.type,route:event.route,x:routeX(event.route,ENTRY)+event.offset,
   offset:event.offset,z:ENTRY+(run.wave===0&&event.time<1.25?4:0),hp,max:hp,flash:0,force:0,nextAttack:3.8,warning:0});
  if(event.type==='boss'){signal('COLOSSO NA BARRAGEM',2);shake=.42;audio('alarm');}
@@ -360,10 +367,12 @@ function soldierLossFeedback(count){
  }
 }
 function breach(amount,loss){
- if(run.army>0){
-  const casualties=Math.min(loss,run.army);
+ const heavy=loss>=4;
+ if(heavy&&run.army>1){
+  const casualties=Math.min(loss,run.army-1);
   run.army-=casualties;soldierLossFeedback(casualties);
- }else{run.health=Math.max(0,run.health-amount);red=.45;}
+ }
+ if(!heavy||run.army<=1){run.health=Math.max(0,run.health-Math.ceil(amount*.5));red=.45;shake=Math.max(shake,.2);}
  audio('impact');
 }
 function fire(x,z,target,type,amount,spread=0,pellets=1,pierce=1){
@@ -468,7 +477,7 @@ function formationPoint(index,count,heroX,heroZ=run.heroZ??BASE){
  if(index===0)return {x:heroX,z:heroZ};
  const seat=index-1,row=Math.floor(seat/12);
  const width=Math.min(12,count-1-row*12);
- return {x:heroX+(seat%12-(width-1)/2)*.61,z:heroZ+.82+row*.52};
+ return {x:heroX+(seat%12-(width-1)/2)*.8,z:heroZ+.82+row*.52};
 }
 function firePeloton(dt){
  const count=Math.min(MAX_VISIBLE_ARMY,run.army);
@@ -478,6 +487,7 @@ function firePeloton(dt){
  const gun=GUNS[run.gun??'rifle'];
  const cadence=(run.boost>0?2:1)*gun.rate;
  const damage=SOLDIER_DAMAGE*run.power*gun.damage*run.army/count;
+ const leader=SOLDIER_DAMAGE*run.power*gun.damage*Math.max(3,8-count);
  for(let i=0;i<count;i++){
   const time=(clocks[i]??random(0,SOLDIER_INTERVAL))-dt*cadence;
   if(time>0){clocks[i]=time;continue;}
@@ -486,7 +496,7 @@ function firePeloton(dt){
    const ahead=run.foes.filter(e=>e.hp>0&&Math.abs(e.x-x)<1.6).sort((a,b)=>b.z-a.z)[0];
    fire(x,z,{x,z:ahead?ahead.z+1.2:z-11},'bomb',damage*2.2);
   }else{
-   fire(x,z,{x,z:z-1},'peloton',damage,
+   fire(x,z,{x,z:z-1},'peloton',i===0?damage+leader:damage,
     gun.pellets>1?.16:0,gun.pellets,gun.pierce);
   }
   (run.soldierShotAt??=[])[i]=run.clock;
@@ -589,7 +599,7 @@ function startNew(){
  void enableAudio();
  run=newRun();phase='prep';activeSlot=-1;
  debris.length=0;numbers.length=0;gateRewards.length=0;armyPunch=0;shake=red=freeze=slow=0;noteLeft=0;
- begin();
+ run.free=1;run.phase='prep';refresh();
 }
 function firePulse(){
  if(phase!=='wave'||(run.pulse??0)>0)return;
@@ -633,7 +643,7 @@ function refresh(){
  }else if(phase==='prep'||(phase==='wave'&&activeSlot>=0)){
   const preview=waves[run.wave].preview;
   if(activeSlot<0){
-   panel('Prepare a defesa',preview+' Toque num encaixe para construir ou reforçar.',[
+   panel('Prepare a defesa','Próximo mapa: '+currentMap().name+' ('+currentMap().routes.length+' caminhos).'+(run.free?' Você tem '+run.free+' torre grátis.':'')+' Toque num ＋ para construir ou reforçar.',[
     button('Iniciar onda '+(run.wave+1),begin,{primary:true})]);
   }else{
    const current=run.slots[activeSlot];
@@ -1115,6 +1125,9 @@ function createScene(T){
  return {draw};
 }
 
+// Só para testes automáticos (abrir com #teste).
+if(location.hash==='#teste')window.__jogo={get run(){return run},set speed(v){testSpeed=v}};
+let testSpeed=1;
 let previous=0,accumulator=0,statsFrame=0;
 function animation(now){
  const dt=previous?Math.min(.06,(now-previous)/1000):0;
@@ -1122,7 +1135,7 @@ function animation(now){
  if(phase==='wave'){
   if(freeze>0)freeze=Math.max(0,freeze-dt);
   else{
-   accumulator+=dt*(slow>0?.39:1);
+   accumulator+=dt*testSpeed*(slow>0?.39:1);
    while(accumulator>=STEP&&phase==='wave'){
     updateGame(STEP);accumulator-=STEP;
     if(freeze>0)break;
