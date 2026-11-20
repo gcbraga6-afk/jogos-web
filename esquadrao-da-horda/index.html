@@ -25,7 +25,7 @@
   <div><strong id="life">Base 100%</strong><div id="hp"><i></i></div></div><strong id="stage"></strong>
   <div class="row"><button id="sound" aria-label="Silenciar som" aria-pressed="false">Som</button><button id="pause">Pausa</button></div>
  </header>
- <div id="callout" hidden></div><div id="hint" hidden>PC: A/D move, mouse mira. Celular: arraste para mover ou toque num portal.</div><button id="pulse" hidden aria-label="Disparar pulso na mira">Pulso</button>
+ <div id="callout" hidden></div><div id="hint" hidden>PC: WASD ou setas movem, mouse mira. Celular: arraste para mover e toque num portal para mirar nele.</div><button id="pulse" hidden aria-label="Disparar pulso na mira">Pulso</button>
  <section id="panel" data-phase="menu"><p>Carregando o campo 3D…</p></section>
 </main>
 <script type="module">
@@ -35,6 +35,7 @@ const random=(lo,hi)=>lo+Math.random()*(hi-lo);
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const BASE=11, FRONT=-29, ENTRY=-21, TOTAL=6, STEP=1/60;
 const MAX_VISIBLE_ARMY=60, SOLDIER_DAMAGE=9, SOLDIER_INTERVAL=.35;
+const FIELD={left:-7,right:7,front:3,back:13,aimFront:FRONT-1,aimBack:19,speed:12};
 const SPRITES={
  soldier:{file:'soldado.png',frames:6,walk:[0,1,2,3],fire:[4,5],fps:8,size:[1.13,1.13],feet:[.5,.94],filter:'linear'},
  commander:{file:'comandante.png',frames:6,walk:[0,1,2,3],fire:[4,5],fps:9,size:[2.45,2.45],feet:[.5,.94],filter:'linear'},
@@ -179,7 +180,7 @@ function persist(){
 }
 function newRun(){
  return {wave:0,phase:'prep',health:100,army:8,slots:slots.map(()=>null),free:0,aim:{x:0,z:-8},
-  heroX:0,heroTarget:0,recoil:0,foes:[],gates:[],bolts:[],schedule:[],cursor:0,clock:0,soldierClocks:[],boost:0,pulse:0,power:1,serial:0,kills:0};
+  heroX:0,heroZ:BASE,heroTarget:0,heroTargetZ:BASE,recoil:0,foes:[],gates:[],bolts:[],schedule:[],cursor:0,clock:0,soldierClocks:[],boost:0,pulse:0,power:1,serial:0,kills:0};
 }
 let run=profile.run||newRun(), phase='menu', activeSlot=-1, soundSystem=null;
 const movementKeys=new Set();
@@ -338,21 +339,28 @@ function advanceBolts(dt){
  run.bolts=keep;
 }
 function updateHero(dt){
+ const x=run.heroX??0,z=run.heroZ??BASE;
  const left=movementKeys.has('KeyA')||movementKeys.has('ArrowLeft');
  const right=movementKeys.has('KeyD')||movementKeys.has('ArrowRight');
- const direction=Number(right)-Number(left);
- const before=run.heroX??0;
- const target=direction?before+direction*dt*12:(run.heroTarget??before);
- run.heroX=clamp(before+clamp(target-before,-12*dt,12*dt),-7,7);
- if(direction)run.heroTarget=run.heroX;
- run.heroVelocity=(run.heroX-before)/dt;
+ const up=movementKeys.has('KeyW')||movementKeys.has('ArrowUp');
+ const down=movementKeys.has('KeyS')||movementKeys.has('ArrowDown');
+ const keyX=Number(right)-Number(left),keyZ=Number(down)-Number(up);
+ const keyboard=!!(keyX||keyZ);
+ const dx=keyboard?keyX:(run.heroTarget??x)-x;
+ const dz=keyboard?keyZ:(run.heroTargetZ??z)-z;
+ const length=Math.hypot(dx,dz),step=FIELD.speed*dt;
+ const scale=length>0?(keyboard?step:Math.min(step,length))/length:0;
+ run.heroX=clamp(x+dx*scale,FIELD.left,FIELD.right);
+ run.heroZ=clamp(z+dz*scale,FIELD.front,FIELD.back);
+ if(keyboard){run.heroTarget=run.heroX;run.heroTargetZ=run.heroZ;}
+ run.heroVelocity=Math.hypot(run.heroX-x,run.heroZ-z)/dt;
  run.recoil=Math.max(0,(run.recoil??0)-dt*12);
 }
-function formationPoint(index,count,heroX){
- if(index===0)return {x:heroX,z:BASE};
- const seat=index-1, row=Math.floor(seat/12);
+function formationPoint(index,count,heroX,heroZ=run.heroZ??BASE){
+ if(index===0)return {x:heroX,z:heroZ};
+ const seat=index-1,row=Math.floor(seat/12);
  const width=Math.min(12,count-1-row*12);
- return {x:heroX*.65+(seat%12-(width-1)/2)*.61,z:BASE+.82+row*.52};
+ return {x:heroX*.65+(seat%12-(width-1)/2)*.61,z:heroZ+.82+row*.52};
 }
 function aimForTouch(){
  const gate=run.gates.find(g=>g.id===run.mobileTarget&&g.hp>0&&g.z<BASE-.2);
@@ -361,7 +369,8 @@ function aimForTouch(){
  let nearest=null;
  for(const foe of run.foes)if(foe.hp>0&&(!nearest||foe.z>nearest.z))nearest=foe;
  if(nearest){
-  const lead=Math.min(BASE-.35,nearest.z+enemyTypes[nearest.type].speed*(BASE-nearest.z)/94);
+  const travel=distance({x:run.heroX??0,z:run.heroZ??BASE},nearest)/94;
+  const lead=nearest.z+enemyTypes[nearest.type].speed*travel;
   run.aim={x:routeX(nearest.route,lead)+nearest.offset,z:lead};
  }
 }
@@ -392,7 +401,7 @@ function updateGame(dt){
  }
  if(run.supply){
   run.supply.expires-=dt;
-  if(Math.abs((run.heroX??0)-run.supply.x)<.85){
+  if(Math.hypot((run.heroX??0)-run.supply.x,(run.heroZ??BASE)-BASE)<1.05){
    run.army=Math.min(120,run.army+4);
    burst(run.supply.x,BASE,0x97ffb4,15);audio('reward');
    signal('+4 SOLDADOS');run.supply=null;
@@ -415,12 +424,12 @@ function updateGame(dt){
     e.warning-=dt;
     if(e.warning<=0){
      e.warning=0;e.nextAttack=5.6;
-     const target=e.attackX??0;
-     if(Math.abs((run.heroX??0)-target)<2.1)breach(15,4);
+     const target=e.attackX??0,targetZ=e.attackZ??BASE;
+     if(Math.hypot((run.heroX??0)-target,(run.heroZ??BASE)-targetZ)<2.1)breach(15,4);
      else signal('ATAQUE ESQUIVADO',1);
-     burst(target,BASE,0xff5159,16);
+     burst(target,targetZ,0xff5159,16);
     }
-   }else if(e.nextAttack<=0){e.warning=1.65;e.stagger=0;e.attackX=run.heroX??0;signal('DESVIE OU INTERROMPA O ATAQUE!',1.6);audio('alarm');}
+   }else if(e.nextAttack<=0){e.warning=1.65;e.stagger=0;e.attackX=run.heroX??0;e.attackZ=run.heroZ??BASE;signal('DESVIE OU INTERROMPA O ATAQUE!',1.6);audio('alarm');}
   }
   if(e.z>BASE-.7){breach(data.breach,data.loss);e.hp=0;}
  }
@@ -560,11 +569,8 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!e.repeat){pause();return;}
  if(phase!=='wave'||!rendering)return;
  if(e.code==='Space'&&!e.repeat&&e.target.tagName!=='BUTTON'){e.preventDefault();firePulse();return;}
- if(['KeyA','KeyD','ArrowLeft','ArrowRight'].includes(e.code)){
-  e.preventDefault();movementKeys.add(e.code);return;
- }
- if(e.key==='ArrowUp'||e.key==='ArrowDown'){
-  e.preventDefault();run.aim.z=clamp(run.aim.z+(e.key==='ArrowUp'?-.9:.9),FRONT,BASE-3);
+ if(['KeyA','KeyD','KeyW','KeyS','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)){
+  e.preventDefault();movementKeys.add(e.code);
  }
 });
 document.addEventListener('keyup',e=>movementKeys.delete(e.code));
@@ -831,7 +837,7 @@ function createScene(T){
   point.set(x,y,z).project(camera);
   node.style.transform='translate3d('+((point.x*.5+.5)*world.clientWidth)+'px,'+((.5-point.y*.5)*world.clientHeight)+'px,0) translate(-50%,-50%) scale('+scale+')';
  }
- let dragPointer=null,dragStartX=0,dragStartY=0,dragHeroX=0,tap=true;
+ let dragPointer=null,dragStartX=0,dragStartY=0,dragHeroX=0,dragHeroZ=BASE,tap=true;
  function aim(event){
   if(phase!=='wave')return;
   const rect=renderer.domElement.getBoundingClientRect();
@@ -840,7 +846,8 @@ function createScene(T){
    if(Math.hypot(event.clientX-dragStartX,event.clientY-dragStartY)>9)tap=false;
    if(!tap){
     const worldWidth=Math.min(26,18*camera.aspect+10);
-    run.heroTarget=clamp(dragHeroX+(event.clientX-dragStartX)/rect.width*worldWidth,-7,7);
+    run.heroTarget=clamp(dragHeroX+(event.clientX-dragStartX)/rect.width*worldWidth,FIELD.left,FIELD.right);
+    run.heroTargetZ=clamp(dragHeroZ+(event.clientY-dragStartY)/rect.height*27,FIELD.front,FIELD.back);
    }
    return;
   }
@@ -848,7 +855,7 @@ function createScene(T){
   cursor.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2);
   ray.setFromCamera(cursor,camera);
   if(ray.ray.intersectPlane(ground,point)){
-   run.aim.x=clamp(point.x,-15,15);run.aim.z=clamp(point.z,FRONT-1,BASE-3);
+   run.aim.x=clamp(point.x,-15,15);run.aim.z=clamp(point.z,FIELD.aimFront,FIELD.aimBack);
   }
  }
  renderer.domElement.onpointermove=aim;
@@ -856,7 +863,7 @@ function createScene(T){
   if(phase!=='wave'||(event.pointerType==='mouse'&&event.button!==0))return;
   if(event.pointerType==='touch'&&dragPointer===null){
    mobileAim=true;dragPointer=event.pointerId;dragStartX=event.clientX;dragStartY=event.clientY;
-   dragHeroX=run.heroX??0;tap=true;renderer.domElement.setPointerCapture(event.pointerId);
+   dragHeroX=run.heroX??0;dragHeroZ=run.heroZ??BASE;tap=true;renderer.domElement.setPointerCapture(event.pointerId);
   }
   aim(event);void enableAudio();
  };
@@ -899,7 +906,7 @@ function createScene(T){
   camera.lookAt(viewTarget);camera.updateMatrixWorld();
   for(const mesh of meshes)mesh.count=0;
   for(const node of markerNodes.values())node.seen=false;
-  const heroX=run.heroX??0,pace=Math.abs(run.heroVelocity??0);
+  const heroX=run.heroX??0,heroZ=run.heroZ??BASE,pace=Math.abs(run.heroVelocity??0);
   const visibleArmy=Math.min(MAX_VISIBLE_ARMY,run.army);
   if(lastRun!==run||lastWave!==run.wave){
    recruits.length=0;lastArmy=visibleArmy;lastWave=run.wave;lastRun=run;
@@ -968,11 +975,11 @@ function createScene(T){
   let index=0;
   for(const n of numbers)tag('d'+index++,n.label,'',n.x,1.5+(1-n.life/.55)*2.2,n.z,'damage',{opacity:Math.min(1,n.life*5)});
   if(phase!=='menu')tag('army',run.army+' soldados',run.boost>0?'Cadência ×2 · '+Math.ceil(run.boost)+'s':'',
-   heroX,2.72,BASE,'army',{scale:1+.3*armyPunch/.2});
+   heroX,2.72,heroZ,'army',{scale:1+.3*armyPunch/.2});
   for(const reward of gateRewards){
    const progress=1-(reward.life/.65)**2;
    tag('reward'+reward.id,'+'+reward.value+'!','',reward.gx+(heroX-reward.gx)*progress,
-    2.1+Math.sin(progress*Math.PI)*2.6,reward.gz+(BASE-reward.gz)*progress,'army',{scale:1.35});
+    2.1+Math.sin(progress*Math.PI)*2.6,reward.gz+(heroZ-reward.gz)*progress,'army',{scale:1.35});
   }
   slots.forEach((s,i)=>{
    const tower=run.slots[i],visual=stationMeshes[i],btn=slotButtons[i];
@@ -988,9 +995,10 @@ function createScene(T){
    }
   });
   for(const [id,node] of markerNodes)if(!node.seen){node.remove();markerNodes.delete(id);}
-  cross.visible=phase==='wave';cross.position.set(run.aim.x,.077,run.aim.z);
+  cross.visible=phase==='wave';
+  cross.position.set(run.aim.x,Math.abs(run.aim.x)<=5.75&&run.aim.z>=10.35&&run.aim.z<=14.45?.54:.077,run.aim.z);
   const boss=run.foes.find(e=>e.type==='boss'&&e.warning>0);
-  warning.visible=!!boss;if(boss)warning.position.x=boss.attackX??0;warning.material.opacity=.5+.32*Math.sin(t*22);
+  warning.visible=!!boss;if(boss)warning.position.set(boss.attackX??0,.53,boss.attackZ??BASE);warning.material.opacity=.5+.32*Math.sin(t*22);
   for(const batch of Object.values(spriteBatches)){
    if(!batch.mesh.count)continue;
    batch.frame.needsUpdate=true;batch.feedback.needsUpdate=true;
