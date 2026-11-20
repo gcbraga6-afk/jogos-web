@@ -27,7 +27,7 @@
   <div><strong id="life">Base 100%</strong><div id="hp"><i></i></div></div><strong id="stage"></strong>
   <div class="row"><button id="sound" aria-label="Silenciar som" aria-pressed="false">Som</button><button id="pause">Pausa</button></div>
  </header>
- <div id="callout" hidden></div><div id="hint" hidden>Toque num portal ou na horda para concentrar o fogo. Toque no ＋ para montar torre. Espaço dispara o pulso.</div><button id="pulse" hidden aria-label="Disparar pulso à frente">Pulso</button>
+ <div id="callout" hidden></div><div id="hint" hidden>Arraste (ou A/D) para mover. Fique embaixo do portal que quer abrir. Toque no ＋ para montar torre. Espaço = pulso.</div><button id="pulse" hidden aria-label="Disparar pulso à frente">Pulso</button>
  <section id="panel" data-phase="menu"><p>Carregando o campo 3D…</p></section>
 </main>
 <script type="module">
@@ -37,7 +37,7 @@ const random=(lo,hi)=>lo+Math.random()*(hi-lo);
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const BASE=11, FRONT=-29, ENTRY=-21, TOTAL=6, STEP=1/60;
 const MAX_VISIBLE_ARMY=60, SOLDIER_DAMAGE=9, SOLDIER_INTERVAL=.35;
-const FIELD={left:-7,right:7,front:3,back:13,speed:12};
+const FIELD={left:-7.6,right:7.6,front:3,back:13,speed:12};
 const SPRITES={
  soldier:{file:'soldado.png',frames:6,walk:[0,1,2,3],fire:[4,5],fps:8,size:[1.13,1.13],feet:[.5,.94],filter:'linear'},
  commander:{file:'comandante.png',frames:6,walk:[0,1,2,3],fire:[4,5],fps:9,size:[2.45,2.45],feet:[.5,.94],filter:'linear'},
@@ -117,7 +117,23 @@ function placeholderSheet(kind,spec){
  }
  return canvas;
 }
-const slots=[{x:-9,z:-10},{x:0,z:-3},{x:9,z:-10},{x:-7,z:5},{x:7,z:5}];
+const slots=[{x:-10,z:-10},{x:10,z:-10},{x:-9.6,z:4},{x:9.6,z:4}];
+// Um mapa por onda: caminhos diferentes (a = x na entrada, b = x na barragem, amp/freq = curvas) e cores próprias.
+const MAPS=[
+ {name:'Barragem',routes:[{a:-4.2,b:-4.2,amp:1,freq:.15},{a:4.2,b:4.2,amp:1,freq:.15,ph:2}],
+  theme:{sky:0x283844,ground:0x34474f,field:0xc8c5a7,line:0xaaa98e,road:0x8f8a7c,wall:0x747e7a,cap:0xebd9ac,house:0x80917b,house2:0x98a792,roof:0xc4c8a1,lamp:0xf7dc85,light:0xfff2d8}},
+ {name:'Deserto',routes:[{a:-6,b:-5,amp:1.2,freq:.12},{a:0,b:0,amp:1.6,freq:.2,ph:1},{a:6,b:5,amp:1.2,freq:.12,ph:3}],
+  theme:{sky:0x6b3f35,ground:0x8a5a36,field:0xe6c58c,line:0xcfa96c,road:0xb07f4c,wall:0xa77a4f,cap:0xf2d6a2,house:0xc99a63,house2:0xd9b07a,roof:0xf0d9a8,lamp:0xffb45a,light:0xffd9a8}},
+ {name:'Passo gelado',routes:[{a:-6,b:4.5,amp:.6,freq:.2},{a:6,b:-4.5,amp:.6,freq:.2,ph:1.5}],
+  theme:{sky:0x8ea6bd,ground:0xcfdbe6,field:0xf1f4f7,line:0xd3dde6,road:0xa9b8c6,wall:0x8e9fb0,cap:0xffffff,house:0x7f93a8,house2:0x9aaec2,roof:0xffffff,lamp:0x9ff3ff,light:0xeaf4ff}},
+ {name:'Cidade à noite',routes:[{a:-6,b:-6,amp:.5,freq:.25},{a:-2,b:-2,amp:.5,freq:.25,ph:1},{a:2,b:2,amp:.5,freq:.25,ph:2},{a:6,b:6,amp:.5,freq:.25,ph:3}],
+  theme:{sky:0x0e1326,ground:0x1a2138,field:0x6b7393,line:0x9aa3c4,road:0x3a4262,wall:0x2e3a5a,cap:0xff4fd8,house:0x26304f,house2:0x323e63,roof:0x58f0ff,lamp:0xff4fd8,light:0xb9c4ff}},
+ {name:'Floresta',routes:[{a:0,b:0,amp:4.2,freq:.17},{a:-7,b:-6.5,amp:.7,freq:.3,ph:1},{a:7,b:6.5,amp:.7,freq:.3,ph:2}],
+  theme:{sky:0x1f3428,ground:0x2c4a30,field:0x9fb07a,line:0x7f925c,road:0x6b5a3c,wall:0x4f6b3e,cap:0xc8d98f,house:0x3d5c34,house2:0x4f7040,roof:0xa7c46a,lamp:0xffe27a,light:0xf4ffd8}},
+ {name:'Vulcão',routes:[{a:-7,b:-1.5,amp:.8,freq:.2},{a:0,b:0,amp:2,freq:.22,ph:2},{a:7,b:1.5,amp:.8,freq:.2,ph:1}],
+  theme:{sky:0x2a1210,ground:0x3a1814,field:0x9a7a68,line:0xff6a2a,road:0x4a2a22,wall:0x4a2a24,cap:0xff8a3d,house:0x3b2420,house2:0x52302a,roof:0xff6a2a,lamp:0xffb03a,light:0xffc9a0}}
+];
+const currentMap=()=>MAPS[(run?.wave??0)%MAPS.length];
 const enemyTypes={
  runner:{name:'Corredores',hp:11,speed:5.8,r:.48,scale:.85,color:0xff3b4f,breach:3,loss:1},
  swarm:{name:'Enxame',hp:17,speed:4.2,r:.53,scale:1,color:0xff7a3d,breach:4,loss:2},
@@ -230,7 +246,9 @@ function newRun(){
  return {wave:0,phase:'prep',health:100,army:8,slots:slots.map(()=>null),free:0,
   heroX:0,heroZ:BASE,heroTarget:0,heroTargetZ:BASE,recoil:0,foes:[],gates:[],bolts:[],schedule:[],cursor:0,clock:0,soldierClocks:[],boost:0,pulse:0,power:1,serial:0,kills:0};
 }
-let run=profile.run||newRun(), phase='menu', activeSlot=-1, soundSystem=null;
+let run=profile.run||newRun();
+if(run.slots?.length!==slots.length)run.slots=slots.map(()=>null);
+let phase='menu', activeSlot=-1, soundSystem=null;
 if(run.aim){
  delete run.aim;
  delete run.mobileTarget;
@@ -245,22 +263,25 @@ function snapshot(){profile.run=run;persist();}
 function begin(){
  const plan=waves[run.wave];
  const queue=plan.groups.flatMap(([type,count,route,start,every])=>{
-  const scale=type==='boss'?1:4;
+  const scale=type==='boss'?1:4,lanes=currentMap().routes.length;
+  route=Math.floor(Math.random()*lanes);
   return Array.from({length:count*scale},(_,i)=>({
    time:Math.max(0,start+Math.floor(i/scale)*every*1.75+(i%scale)*.075+random(-.055,.055)),type,
-   route:type!=='boss'&&i%16===15?1-route:route,offset:random(-1.85,1.85)
+   route:type!=='boss'&&i%16===15?(route+1+Math.floor(Math.random()*(lanes-1||1)))%lanes:route,offset:random(-1.4,1.4)
   }));
  });
- queue.push(...plan.offers.map(([offer,route,time])=>({offer,route,time})));
+ const lanes=currentMap().routes.length,first=Math.floor(Math.random()*lanes);
+ queue.push(...plan.offers.map(([offer,,time],i)=>({offer,route:(first+i)%lanes,time})));
  run.schedule=queue.sort((a,b)=>a.time-b.time);
  Object.assign(run,{phase:'wave',clock:0,soldierClocks:[],soldierShotAt:[],cursor:0,boost:0,bolts:[],foes:[],gates:[],supply:null,supplySent:false});
  phase='wave';activeSlot=-1;
  if(run.newGun){run.newGun=false;signal('NOVA ARMA: '+GUNS[run.gun].name.toUpperCase(),2.2);}
- else signal('ONDA '+(run.wave+1),1.4);
+ else signal('ONDA '+(run.wave+1)+' · '+currentMap().name.toUpperCase(),1.6);
  snapshot();refresh();
 }
 function routeX(route,z){
- return (route===0?-1:1)*(4.15+.95*Math.sin((z+29)*.145)+.38*Math.sin(z*.34));
+ const r=currentMap().routes[route%currentMap().routes.length],t=clamp((z-FRONT)/(BASE-FRONT),0,1);
+ return r.a+(r.b-r.a)*t+r.amp*Math.sin((z+29)*r.freq+(r.ph??0));
 }
 function spawn(event){
  if(event.offer){
@@ -385,7 +406,7 @@ function advanceBolts(dt){
    nearest=t;target=e;isGate=gate;
   };
   for(const e of run.foes)if(!b.seen?.includes(e.id))test(e,enemyTypes[e.type].r+.18,false);
-  if(b.type==='peloton')for(const g of run.gates)if(b.gate===g.id)test(g,.96,true);
+  if(b.type==='peloton')for(const g of run.gates)test(g,.96,true);
   if(target){
    if(isGate){
     target.hp--;target.flash=.1;
@@ -398,19 +419,18 @@ function advanceBolts(dt){
  }
  run.bolts=keep;
 }
-// O pelotão fica fixo na barragem: o jogador comanda, não pilota.
+// O pelotão anda de um lado pro outro na barragem e atira reto pra frente.
 function updateHero(dt){
- run.heroX=0;run.heroZ=BASE;run.heroVelocity=0;
+ const x=run.heroX??0;
+ const left=movementKeys.has('KeyA')||movementKeys.has('ArrowLeft');
+ const right=movementKeys.has('KeyD')||movementKeys.has('ArrowRight');
+ const key=Number(right)-Number(left);
+ const target=key?x+key*FIELD.speed*dt:(run.heroTarget??x);
+ run.heroX=clamp(x+clamp(target-x,-FIELD.speed*dt,FIELD.speed*dt),FIELD.left,FIELD.right);
+ if(key)run.heroTarget=run.heroX;
+ run.heroZ=BASE;run.heroVelocity=Math.abs(run.heroX-x)/dt;
  run.recoil=Math.max(0,(run.recoil??0)-dt*12);
- const focus=run.focus;
- if(focus){
-  focus.time-=dt;
-  if(focus.gate){
-   const gate=run.gates.find(g=>g.id===focus.gate&&g.hp>0);
-   if(gate){focus.x=gate.x;focus.z=gate.z;}else run.focus=null;
-  }else focus.z+=2.6*dt;
-  if(run.focus&&focus.time<=0)run.focus=null;
- }
+ run.focus=null;
 }
 // Toque no campo: foca um portal, um inimigo ou um grupo da horda.
 function setFocus(x,z){
@@ -448,7 +468,7 @@ function formationPoint(index,count,heroX,heroZ=run.heroZ??BASE){
  if(index===0)return {x:heroX,z:heroZ};
  const seat=index-1,row=Math.floor(seat/12);
  const width=Math.min(12,count-1-row*12);
- return {x:heroX*.65+(seat%12-(width-1)/2)*.61,z:heroZ+.82+row*.52};
+ return {x:heroX+(seat%12-(width-1)/2)*.61,z:heroZ+.82+row*.52};
 }
 function firePeloton(dt){
  const count=Math.min(MAX_VISIBLE_ARMY,run.army);
@@ -458,17 +478,15 @@ function firePeloton(dt){
  const gun=GUNS[run.gun??'rifle'];
  const cadence=(run.boost>0?2:1)*gun.rate;
  const damage=SOLDIER_DAMAGE*run.power*gun.damage*run.army/count;
- const targets=pelotonTargets();
- if(!targets.length){clocks.length=0;return;}
  for(let i=0;i<count;i++){
   const time=(clocks[i]??random(0,SOLDIER_INTERVAL))-dt*cadence;
   if(time>0){clocks[i]=time;continue;}
   const {x,z}=formationPoint(i,count,run.heroX??0);
-  const target=targets[i%targets.length];
-  if(gun.style==='grenade'&&!target.gateId&&i%3===0){
-   fire(x,z,{x:target.x,z:target.z+1.2},'bomb',damage*2.2);
+  if(gun.style==='grenade'&&i%3===0){
+   const ahead=run.foes.filter(e=>e.hp>0&&Math.abs(e.x-x)<1.6).sort((a,b)=>b.z-a.z)[0];
+   fire(x,z,{x,z:ahead?ahead.z+1.2:z-11},'bomb',damage*2.2);
   }else{
-   fire(x,z,{x:target.x+random(-.25,.25),z:target.z,gateId:target.gateId},'peloton',damage,
+   fire(x,z,{x,z:z-1},'peloton',damage,
     gun.pellets>1?.16:0,gun.pellets,gun.pierce);
   }
   (run.soldierShotAt??=[])[i]=run.clock;
@@ -509,10 +527,11 @@ function updateGame(dt){
     e.warning-=dt;
     if(e.warning<=0){
      e.warning=0;e.nextAttack=5.6;
-     breach(15,7);shake=Math.max(shake,.6);
+     if(Math.abs((run.heroX??0)-(e.attackX??0))<2.1){breach(15,7);shake=Math.max(shake,.6);}
+     else signal('ATAQUE ESQUIVADO',1);
      burst(e.attackX??0,e.attackZ??BASE,0xff5159,22);
     }
-   }else if(e.nextAttack<=0){e.warning=2.2;e.stagger=0;e.attackX=0;e.attackZ=BASE+.8;signal('TOQUE NO COLOSSO PARA INTERROMPER!',1.8);audio('alarm');}
+   }else if(e.nextAttack<=0){e.warning=1.9;e.stagger=0;e.attackX=run.heroX??0;e.attackZ=BASE+.8;signal('SAIA DA MARCA OU ATIRE NO COLOSSO!',1.8);audio('alarm');}
   }
   if(e.z>BASE-.7){breach(data.breach,data.loss);e.hp=0;}
  }
@@ -576,8 +595,8 @@ function firePulse(){
  if(phase!=='wave'||(run.pulse??0)>0)return;
  const level=run.pulseLevel??1;
  run.pulse=Math.max(4,9-level*1.5);
- const front=run.foes.filter(e=>e.hp>0).sort((a,b)=>b.z-a.z)[0];
- const center=run.focus&&!run.focus.gate?{x:run.focus.x,z:run.focus.z}:front?{x:front.x,z:front.z-1}:{x:0,z:-4};
+ const hx=run.heroX??0,front=run.foes.filter(e=>e.hp>0&&Math.abs(e.x-hx)<3).sort((a,b)=>b.z-a.z)[0];
+ const center=front?{x:hx,z:front.z-1}:{x:hx,z:BASE-9};
  const radius=3.9+level*.6;
  for(const enemy of run.foes){
   if(distance(center,enemy)<=radius)damage(enemy,65*level,'bomb');
@@ -610,7 +629,7 @@ function refresh(){
  if(phase==='menu'){
   const options=[button('Jogar',startNew,{primary:true})];
   if(profile.run&&['prep','wave','reward'].includes(run.phase))options.unshift(button('Continuar',restored,{primary:true}));
-  panel('Esquadrão da Horda','Você comanda. Toque nos portais e na horda para concentrar o fogo, e monte torres até no meio da batalha.',options,'h1');
+  panel('Esquadrão da Horda','Mova o pelotão de um lado pro outro: os tiros vão reto. Escolha que portal abrir, desvie do Colosso e monte torres no meio da batalha.',options,'h1');
  }else if(phase==='prep'||(phase==='wave'&&activeSlot>=0)){
   const preview=waves[run.wave].preview;
   if(activeSlot<0){
@@ -656,6 +675,7 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!e.repeat){pause();return;}
  if(phase!=='wave'||!rendering)return;
  if(e.code==='Space'&&!e.repeat&&e.target.tagName!=='BUTTON'){e.preventDefault();firePulse();return;}
+ if(['KeyA','KeyD','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();movementKeys.add(e.code);}
 });
 document.addEventListener('keyup',e=>movementKeys.delete(e.code));
 window.addEventListener('blur',()=>movementKeys.clear());
@@ -725,7 +745,7 @@ function createScene(T){
  const cameraHome=new T.Vector3(0,18,24);
  camera.position.copy(cameraHome);camera.lookAt(viewTarget);
  scene.fog=new T.FogExp2(0x283844,.016);
- scene.add(new T.HemisphereLight(0xfff2d8,0x7a97b0,1.83));
+ const hemi=new T.HemisphereLight(0xfff2d8,0x7a97b0,1.83);scene.add(hemi);
  const key=new T.DirectionalLight(0xffe3b2,2.4);key.position.set(-18,28,11);scene.add(key);
  const materials=new Map();
  function material(color){
@@ -759,13 +779,6 @@ function createScene(T){
    block(0x747e7a,x,.38,z,.7,.76,1.95);
    block(0xebd9ac,x,.78,z,.82,.13,1.78);
    if(z%6===2||z%6===-4)block(0x344e4d,x,1.06,z,1.12,.75,.82);
-  }
- }
- for(let route=0;route<2;route++){
-  for(let z=FRONT;z<BASE;z+=.75){
-   const x=routeX(route,z),piece=block(0x8f8a7c,x,.005,z,3.12,.028,.84);
-   piece.rotation.y=Math.atan2(routeX(route,z+.4)-x,.4);
-   if(Math.round((z-FRONT)/.75)%4===0)block(0xe1d4aa,x,.027,z,.10,.012,.43);
   }
  }
  for(const side of [-1,1]){
@@ -806,6 +819,31 @@ function createScene(T){
   const merged=new T.InstancedMesh(group[0].geometry,group[0].material,group.length);
   group.forEach((mesh,i)=>{mesh.updateMatrix();merged.setMatrixAt(i,mesh.matrix);scene.remove(mesh);});
   merged.computeBoundingSphere();scene.add(merged);
+ }
+ // Caminhos e cores trocam a cada onda.
+ const BASE_COLORS={ground:0x34474f,field:0xc8c5a7,line:0xaaa98e,wall:0x747e7a,cap:0xebd9ac,house:0x80917b,house2:0x98a792,roof:0xc4c8a1,lamp:0xf7dc85};
+ const roadMat=new T.MeshLambertMaterial({color:0x8f8a7c,flatShading:true}),dashMat=new T.MeshLambertMaterial({color:0xe1d4aa,flatShading:true});
+ const roads=new T.InstancedMesh(box,roadMat,260),dashes=new T.InstancedMesh(box,dashMat,70);
+ roads.frustumCulled=dashes.frustumCulled=false;scene.add(roads,dashes);
+ let shownMap=null;
+ function showMap(map){
+  if(shownMap===map)return;shownMap=map;
+  const th=map.theme;
+  for(const [key,color] of Object.entries(BASE_COLORS))materials.get(color)?.color.set(th[key]);
+  renderer.setClearColor(th.sky);scene.fog.color.set(th.sky);
+  hemi.color.set(th.light);roadMat.color.set(th.road);dashMat.color.set(th.cap);
+  let n=0,d=0;
+  map.routes.forEach((_,route)=>{
+   for(let z=FRONT;z<BASE;z+=.75){
+    const x=routeX(route,z);
+    matrix.position.set(x,.005,z);matrix.rotation.set(0,Math.atan2(routeX(route,z+.4)-x,.4),0);
+    matrix.scale.set(3.12,.028,.84);matrix.updateMatrix();roads.setMatrixAt(n++,matrix.matrix);
+    if(Math.round((z-FRONT)/.75)%4===0&&d<70){
+     matrix.position.y=.027;matrix.scale.set(.1,.012,.43);matrix.updateMatrix();dashes.setMatrixAt(d++,matrix.matrix);
+    }
+   }
+  });
+  roads.count=n;dashes.count=d;roads.instanceMatrix.needsUpdate=dashes.instanceMatrix.needsUpdate=true;
  }
  function station(s){
   const group=new T.Group();group.position.set(s.x,0,s.z);scene.add(group);
@@ -923,11 +961,17 @@ function createScene(T){
  renderer.domElement.onpointerdown=event=>{
   if(phase!=='wave'||event.button!==0)return;
   void enableAudio();
-  const rect=renderer.domElement.getBoundingClientRect();
-  cursor.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2);
-  ray.setFromCamera(cursor,camera);
-  if(ray.ray.intersectPlane(ground,point))setFocus(point.x,point.z);
+  drag=event.pointerId;dragX=event.clientX;dragHero=run.heroX??0;
+  renderer.domElement.setPointerCapture(event.pointerId);
  };
+ let drag=null,dragX=0,dragHero=0;
+ renderer.domElement.onpointermove=event=>{
+  if(phase!=='wave'||drag!==event.pointerId)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  run.heroTarget=clamp(dragHero+(event.clientX-dragX)/rect.width*Math.min(24,16*camera.aspect+8),FIELD.left,FIELD.right);
+ };
+ const release=event=>{if(drag===event.pointerId)drag=null;};
+ renderer.domElement.onpointerup=release;renderer.domElement.onpointercancel=release;renderer.domElement.onlostpointercapture=release;
  const focusRing=new T.Mesh(new T.RingGeometry(1.5,1.85,36),new T.MeshBasicMaterial({color:0xfff27a,side:T.DoubleSide,transparent:true,opacity:.9,depthWrite:false}));
  focusRing.rotation.x=-Math.PI/2;scene.add(focusRing);
  function resize(){
@@ -942,8 +986,9 @@ function createScene(T){
  window.addEventListener('resize',resize);resize();
  function draw(){
   const t=run.clock;
+  showMap(currentMap());
   camera.position.copy(cameraHome);
-  camera.position.x+=Math.sin(performance.now()*.064)*shake;
+  camera.position.x+=(run.heroX??0)*.25+Math.sin(performance.now()*.064)*shake;
   camera.position.y+=Math.cos(performance.now()*.076)*shake*.54;
   camera.lookAt(viewTarget);camera.updateMatrixWorld();
   for(const mesh of meshes)mesh.count=0;
