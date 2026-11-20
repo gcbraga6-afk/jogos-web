@@ -25,7 +25,7 @@
   <div><strong id="life">Base 100%</strong><div id="hp"><i></i></div></div><strong id="stage"></strong>
   <div class="row"><button id="sound" aria-label="Silenciar som" aria-pressed="false">Som</button><button id="pause">Pausa</button></div>
  </header>
- <div id="callout" hidden></div><div id="hint" hidden>PC: WASD ou setas movem, mouse mira. Celular: arraste para mover e toque num portal para mirar nele.</div><button id="pulse" hidden aria-label="Disparar pulso na mira">Pulso</button>
+ <div id="callout" hidden></div><div id="hint" hidden>Mova com WASD, setas ou arrastando. Alinhe o pelotão com a horda ou os portais.</div><button id="pulse" hidden aria-label="Disparar pulso à frente">Pulso</button>
  <section id="panel" data-phase="menu"><p>Carregando o campo 3D…</p></section>
 </main>
 <script type="module">
@@ -35,7 +35,7 @@ const random=(lo,hi)=>lo+Math.random()*(hi-lo);
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const BASE=11, FRONT=-29, ENTRY=-21, TOTAL=6, STEP=1/60;
 const MAX_VISIBLE_ARMY=60, SOLDIER_DAMAGE=9, SOLDIER_INTERVAL=.35;
-const FIELD={left:-7,right:7,front:3,back:13,aimFront:FRONT-1,aimBack:19,speed:12};
+const FIELD={left:-7,right:7,front:3,back:13,speed:12};
 const SPRITES={
  soldier:{file:'soldado.png',frames:6,walk:[0,1,2,3],fire:[4,5],fps:8,size:[1.13,1.13],feet:[.5,.94],filter:'linear'},
  commander:{file:'comandante.png',frames:6,walk:[0,1,2,3],fire:[4,5],fps:9,size:[2.45,2.45],feet:[.5,.94],filter:'linear'},
@@ -179,14 +179,19 @@ function persist(){
  try {localStorage.setItem(saveKey,JSON.stringify(profile));}catch{}
 }
 function newRun(){
- return {wave:0,phase:'prep',health:100,army:8,slots:slots.map(()=>null),free:0,aim:{x:0,z:-8},
+ return {wave:0,phase:'prep',health:100,army:8,slots:slots.map(()=>null),free:0,
   heroX:0,heroZ:BASE,heroTarget:0,heroTargetZ:BASE,recoil:0,foes:[],gates:[],bolts:[],schedule:[],cursor:0,clock:0,soldierClocks:[],boost:0,pulse:0,power:1,serial:0,kills:0};
 }
 let run=profile.run||newRun(), phase='menu', activeSlot=-1, soundSystem=null;
+if(run.aim){
+ delete run.aim;
+ delete run.mobileTarget;
+ run.bolts=run.bolts.filter(bolt=>bolt.type!=='peloton');
+}
 const movementKeys=new Set();
 let note='',noteLeft=0,shake=0,freeze=0,slow=0, red=0,rendering=null, savedClock=0;
 const debris=[],numbers=[],gateRewards=[];
-let armyPunch=0,mobileAim=!!window.matchMedia?.('(pointer: coarse)').matches;
+let armyPunch=0;
 function signal(text,time=1.6){note=text;noteLeft=time;}
 function snapshot(){profile.run=run;persist();}
 function begin(){
@@ -200,7 +205,7 @@ function begin(){
  });
  queue.push(...plan.offers.map(([offer,route,time])=>({offer,route,time})));
  run.schedule=queue.sort((a,b)=>a.time-b.time);
- Object.assign(run,{phase:'wave',clock:0,soldierClocks:[],soldierShotAt:[],mobileTarget:null,cursor:0,boost:0,bolts:[],foes:[],gates:[],supply:null,supplySent:false});
+ Object.assign(run,{phase:'wave',clock:0,soldierClocks:[],soldierShotAt:[],cursor:0,boost:0,bolts:[],foes:[],gates:[],supply:null,supplySent:false});
  phase='wave';activeSlot=-1;signal('ONDA '+(run.wave+1),1.4);snapshot();refresh();
 }
 function routeX(route,z){
@@ -362,18 +367,6 @@ function formationPoint(index,count,heroX,heroZ=run.heroZ??BASE){
  const width=Math.min(12,count-1-row*12);
  return {x:heroX*.65+(seat%12-(width-1)/2)*.61,z:heroZ+.82+row*.52};
 }
-function aimForTouch(){
- const gate=run.gates.find(g=>g.id===run.mobileTarget&&g.hp>0&&g.z<BASE-.2);
- if(gate){run.aim={x:gate.x,z:Math.min(BASE-.2,gate.z+.45)};return;}
- run.mobileTarget=null;
- let nearest=null;
- for(const foe of run.foes)if(foe.hp>0&&(!nearest||foe.z>nearest.z))nearest=foe;
- if(nearest){
-  const travel=distance({x:run.heroX??0,z:run.heroZ??BASE},nearest)/94;
-  const lead=nearest.z+enemyTypes[nearest.type].speed*travel;
-  run.aim={x:routeX(nearest.route,lead)+nearest.offset,z:lead};
- }
-}
 function firePeloton(dt){
  const count=Math.min(MAX_VISIBLE_ARMY,run.army);
  const clocks=run.soldierClocks??(run.soldierClocks=[]);
@@ -385,7 +378,7 @@ function firePeloton(dt){
   const time=(clocks[i]??random(0,SOLDIER_INTERVAL))-dt*cadence;
   if(time>0){clocks[i]=time;continue;}
   const {x,z}=formationPoint(i,count,run.heroX??0);
-  fire(x,z,run.aim,'peloton',damage);
+  fire(x,z,{x,z:z-1},'peloton',damage);
   (run.soldierShotAt??=[])[i]=run.clock;
   clocks[i]=time+SOLDIER_INTERVAL+random(-.038,.038);
   if(i===0)run.recoil=1;
@@ -433,7 +426,6 @@ function updateGame(dt){
   }
   if(e.z>BASE-.7){breach(data.breach,data.loss);e.hp=0;}
  }
- if(mobileAim)aimForTouch();
  firePeloton(dt);
  run.slots.forEach((tower,i)=>{
   if(!tower)return;
@@ -498,7 +490,7 @@ function startNew(){
 function firePulse(){
  if(phase!=='wave'||(run.pulse??0)>0)return;
  run.pulse=8;
- const center={...run.aim};
+ const center={x:run.heroX??0,z:(run.heroZ??BASE)-7};
  for(const enemy of run.foes){
   if(distance(center,enemy)<=3.9)damage(enemy,65,'bomb');
  }
@@ -529,7 +521,7 @@ function refresh(){
  if(phase==='menu'){
   const options=[button('Jogar',startNew,{primary:true})];
   if(profile.run&&['prep','wave','reward'].includes(run.phase))options.unshift(button('Continuar',restored,{primary:true}));
-  panel('Esquadrão da Horda','Controle a comandante. Recrute atirando nos portais e segure a barragem.',options,'h1');
+  panel('Esquadrão da Horda','Mova o pelotão para alinhar os disparos com a horda e os portais.',options,'h1');
  }else if(phase==='prep'){
   const preview=waves[run.wave].preview;
   if(activeSlot<0){
@@ -735,8 +727,6 @@ function createScene(T){
   return {turret,body,head,trim};
  }
  const stationMeshes=slots.map(station);
- const cross=new T.Mesh(new T.RingGeometry(.40,.50,28),new T.MeshBasicMaterial({color:0xeaff99,side:T.DoubleSide,depthWrite:false}));
- cross.rotation.x=-Math.PI/2;scene.add(cross);
  const warning=new T.Mesh(new T.RingGeometry(1.4,2.05,32),new T.MeshBasicMaterial({color:0xff3e51,side:T.DoubleSide,transparent:true,opacity:.8}));
  warning.rotation.x=-Math.PI/2;warning.position.set(0,.081,BASE);scene.add(warning);
  const matrix=new T.Object3D(),tint=new T.Color();
@@ -814,8 +804,7 @@ function createScene(T){
   if(age<.34)return 1+.2*(1-(age-.16)/.18)**2;
   return 1;
  }
- const markerNodes=new Map(),point=new T.Vector3(),cursor=new T.Vector2(),ray=new T.Raycaster();
- const ground=new T.Plane(new T.Vector3(0,1,0),0);
+ const markerNodes=new Map(),point=new T.Vector3();
  const slotButtons=slots.map((s,i)=>{
   const btn=button('Construir',()=>{if(phase==='prep'){activeSlot=i;refresh();}});
   btn.className='slot';$('tags').append(btn);return btn;
@@ -837,54 +826,21 @@ function createScene(T){
   point.set(x,y,z).project(camera);
   node.style.transform='translate3d('+((point.x*.5+.5)*world.clientWidth)+'px,'+((.5-point.y*.5)*world.clientHeight)+'px,0) translate(-50%,-50%) scale('+scale+')';
  }
- let dragPointer=null,dragStartX=0,dragStartY=0,dragHeroX=0,dragHeroZ=BASE,tap=true;
- function aim(event){
-  if(phase!=='wave')return;
-  const rect=renderer.domElement.getBoundingClientRect();
-  if(event.pointerType==='touch'){
-   if(dragPointer!==event.pointerId)return;
-   if(Math.hypot(event.clientX-dragStartX,event.clientY-dragStartY)>9)tap=false;
-   if(!tap){
-    const worldWidth=Math.min(26,18*camera.aspect+10);
-    run.heroTarget=clamp(dragHeroX+(event.clientX-dragStartX)/rect.width*worldWidth,FIELD.left,FIELD.right);
-    run.heroTargetZ=clamp(dragHeroZ+(event.clientY-dragStartY)/rect.height*27,FIELD.front,FIELD.back);
-   }
-   return;
-  }
-  mobileAim=false;
-  cursor.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2);
-  ray.setFromCamera(cursor,camera);
-  if(ray.ray.intersectPlane(ground,point)){
-   run.aim.x=clamp(point.x,-15,15);run.aim.z=clamp(point.z,FIELD.aimFront,FIELD.aimBack);
-  }
- }
- renderer.domElement.onpointermove=aim;
+ let dragPointer=null,dragStartX=0,dragStartY=0,dragHeroX=0,dragHeroZ=BASE;
  renderer.domElement.onpointerdown=event=>{
-  if(phase!=='wave'||(event.pointerType==='mouse'&&event.button!==0))return;
-  if(event.pointerType==='touch'&&dragPointer===null){
-   mobileAim=true;dragPointer=event.pointerId;dragStartX=event.clientX;dragStartY=event.clientY;
-   dragHeroX=run.heroX??0;dragHeroZ=run.heroZ??BASE;tap=true;renderer.domElement.setPointerCapture(event.pointerId);
-  }
-  aim(event);void enableAudio();
+  if(phase!=='wave'||dragPointer!==null||event.button!==0)return;
+  dragPointer=event.pointerId;dragStartX=event.clientX;dragStartY=event.clientY;
+  dragHeroX=run.heroX??0;dragHeroZ=run.heroZ??BASE;
+  renderer.domElement.setPointerCapture(event.pointerId);void enableAudio();
  };
- function release(event){
-  if(dragPointer!==event.pointerId)return;
-  if(tap&&event.type==='pointerup'&&phase==='wave'){
-   const rect=renderer.domElement.getBoundingClientRect();
-   let selected=null,best=38;
-   for(const g of run.gates){
-    for(const y of [1,1.9]){
-     point.set(g.x,y,g.z).project(camera);
-     const dx=rect.left+(.5+.5*point.x)*rect.width-event.clientX;
-     const dy=rect.top+(.5-.5*point.y)*rect.height-event.clientY;
-     const d=Math.hypot(dx,dy);
-     if(d<best){best=d;selected=g.id;}
-    }
-   }
-   run.mobileTarget=run.mobileTarget===selected?null:selected;
-  }
-  dragPointer=null;
- }
+ renderer.domElement.onpointermove=event=>{
+  if(phase!=='wave'||dragPointer!==event.pointerId)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  const worldWidth=Math.min(26,18*camera.aspect+10);
+  run.heroTarget=clamp(dragHeroX+(event.clientX-dragStartX)/rect.width*worldWidth,FIELD.left,FIELD.right);
+  run.heroTargetZ=clamp(dragHeroZ+(event.clientY-dragStartY)/rect.height*27,FIELD.front,FIELD.back);
+ };
+ function release(event){if(dragPointer===event.pointerId)dragPointer=null;}
  renderer.domElement.onpointerup=release;
  renderer.domElement.onpointercancel=release;
  renderer.domElement.onlostpointercapture=release;
@@ -995,8 +951,6 @@ function createScene(T){
    }
   });
   for(const [id,node] of markerNodes)if(!node.seen){node.remove();markerNodes.delete(id);}
-  cross.visible=phase==='wave';
-  cross.position.set(run.aim.x,Math.abs(run.aim.x)<=5.75&&run.aim.z>=10.35&&run.aim.z<=14.45?.54:.077,run.aim.z);
   const boss=run.foes.find(e=>e.type==='boss'&&e.warning>0);
   warning.visible=!!boss;if(boss)warning.position.set(boss.attackX??0,.53,boss.attackZ??BASE);warning.material.opacity=.5+.32*Math.sin(t*22);
   for(const batch of Object.values(spriteBatches)){
