@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esquadrão da Horda</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui;background:#0b1017;color:#f2f5ff;--mint:#71f3c4;--line:#293846}
+*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:18px;display:grid;grid-template-columns:minmax(265px,330px) minmax(0,1fr);gap:16px}
+aside,section{background:#141e29;border:1px solid var(--line);border-radius:18px;padding:16px}h1{font-size:clamp(26px,4vw,42px);line-height:1;margin:7px 0 16px;letter-spacing:-.045em}h2{font-size:18px;margin:12px 0 8px}p{line-height:1.45;margin:8px 0;color:#bfd0df}small,.muted{color:#a9bdcd}label{display:block;margin-top:9px}input,button,select{font:inherit;border:1px solid #405367;border-radius:9px;background:#203243;color:inherit;padding:8px 10px}input,select{width:100%;margin:4px 0}button{cursor:pointer;min-height:39px}button:hover:enabled{background:#345470}button:disabled{opacity:.45;cursor:default}.primary{background:var(--mint);color:#071b18;font-weight:750;border-color:transparent}.primary:hover:enabled{background:#a6ffdf}.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.missions{display:grid;gap:6px}.missions button{text-align:left}.missions [aria-current=true]{border-color:var(--mint)}#hud{min-height:40px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums}canvas{width:100%;display:block;background:#0c181e;border:1px solid var(--line);border-radius:12px;touch-action:none;max-height:66vh;object-fit:contain}#hint{min-height:48px}details{margin-top:12px}summary{cursor:pointer}ul{padding-left:20px}li{margin:6px 0}[hidden]{display:none!important}#profileStatus{min-height:24px}#badge{color:var(--mint);font-weight:700;letter-spacing:.09em;font-size:.82rem}#controls{margin-top:10px}
+@media(max-width:760px){main{display:flex;flex-direction:column;padding:9px;gap:8px}aside,section{padding:10px}h1{margin-bottom:8px}canvas{max-height:57vh}.missions{display:flex;flex-wrap:wrap}.missions button{font-size:.88rem}#hint{min-height:0}#arsenal{margin-bottom:6px}}
+</style>
+<main>
+<aside>
+<div id="badge">OPERAÇÃO DE RESGATE</div>
+<h1>Esquadrão<br>da Horda</h1>
+<form id="login">
+<label for="name">Nome do perfil</label><input id="name" required maxlength="24" autocomplete="username">
+<label for="pin">PIN de 4 a 8 dígitos</label><input id="pin" type="password" required pattern="[0-9]{4,8}" inputmode="numeric" autocomplete="current-password">
+<button class="primary">Entrar ou criar perfil</button>
+<p class="muted">O perfil e o progresso ficam salvos neste navegador.</p>
+</form>
+<p id="profileStatus" role="status"></p>
+<div id="profile" hidden>
+<div class="row"><button id="exit">Sair do perfil</button><span id="vault"></span></div>
+<h2>Missões</h2><div class="missions" id="missions"></div>
+<label for="loadout">Arma inicial da próxima missão</label><select id="loadout"></select>
+<details id="arsenal"><summary>Arsenal · 20 armas</summary><ul id="weaponList"></ul></details>
+</div>
+</aside>
+<section aria-label="Campo de batalha">
+<div id="hud"><strong id="missionName">Campo de batalha</strong><span id="stats"></span></div>
+<canvas id="field" width="720" height="620" aria-label="Campo com três faixas. Use as setas esquerda e direita ou toque em uma faixa."></canvas>
+<p id="hint" role="status">Entre com um perfil para jogar.</p>
+<div class="row" id="controls" hidden>
+<button class="primary" id="play">Jogar</button>
+<button id="left" aria-label="Mover para a esquerda">←</button><button id="right" aria-label="Mover para a direita">→</button>
+<button id="air">Apoio aéreo</button><button id="tower">Montar torre</button>
+</div>
+<details><summary>Controles</summary><p>Setas ou A/D para mudar de faixa. No celular, toque ou arraste pelo campo. Espaço pausa, F chama apoio aéreo e T monta uma torre durante a preparação.</p></details>
+</section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const ctx = $('field').getContext('2d');
+const lanes = [178,360,542];
+const guns = [
+ ['Pistola leve',10,.42,'move','Dano extra após mudar de faixa'],
+ ['Pistolas duplas',7,.44,'dual','Dois disparos por rajada'],
+ ['Revólver pesado',34,.85,'push','Empurra inimigos pequenos'],
+ ['Pistola de ricochete',18,.59,'bounce','Rebate em um alvo próximo'],
+ ['Carabina',15,.29,'plain','Tiro constante em qualquer faixa'],
+ ['Rifle de rajada',10,.55,'burst','Três acertos por rajada'],
+ ['Rifle de precisão',88,1.04,'scope','Dano extra no núcleo do chefe'],
+ ['Rifle perfurante',30,.68,'pierce','Atravessa três alvos'],
+ ['Escopeta curta',24,.79,'short','Leque largo a curta distância'],
+ ['Escopeta tática',19,.7,'spread','Leque de médio alcance'],
+ ['Escopeta dupla',46,1.13,'double','Dois impactos em alvos próximos'],
+ ['Escopeta de onda',19,.81,'wave','Empurra a primeira fileira'],
+ ['Submetralhadora',7,.13,'dual','Rajadas rápidas em movimento'],
+ ['Metralhadora leve',12,.13,'plain','Mantém a cadência ao mudar de lado'],
+ ['Metralhadora pesada',17,.28,'spin','Cofre de 500 acertos. Acelera na mesma faixa'],
+ ['Canhão giratório',27,.15,'heat','Dispara em ciclos de fogo e resfriamento'],
+ ['Lança-granadas',38,.93,'lob','Explode atrás da primeira fileira'],
+ ['Lança-foguetes',74,1.17,'blast','Explode no primeiro impacto'],
+ ['Bobina elétrica',29,.7,'chain','Salta entre inimigos próximos'],
+ ['Canhão de pulso',62,1.32,'beam','Atravessa todos os alvos na faixa']
+];
+const missions = [
+ {name:'Estrada de Resgate', mode:'advance', waves:3, theme:'#132d34', intro:'Avance pelos portais verdes. Escolha entre recrutar e atirar nos cofres.'},
+ {name:'Posto Cercado', mode:'defense', waves:3, theme:'#242b40', intro:'O esquadrão fica no posto. Mude a direção dos tiros para cobrir três entradas.'},
+ {name:'Terminal de Carga', mode:'hybrid', waves:4, theme:'#302a35', intro:'Resgate recrutas na primeira onda e use os sobreviventes para operar torres.'},
+ {name:'Ponte em Colapso', mode:'advance', waves:4, theme:'#163444', intro:'Saia da faixa piscante antes que a pista desabe. Continue de olho nos portais.'},
+ {name:'Última Evacuação', mode:'hybrid', waves:5, theme:'#302636', intro:'Abra caminho, monte a última defesa e enfrente o Colosso.'}
+];
+const types = [
+ {name:'Corredor',hp:24,speed:108,r:9,color:'#fa6278',breach:9},
+ {name:'Enxame',hp:42,speed:63,r:12,color:'#ff8969',breach:12},
+ {name:'Blindado',hp:175,speed:37,r:19,color:'#bc8bf5',breach:20},
+ {name:'Saqueador',hp:82,speed:61,r:14,color:'#ffd36e',breach:15},
+ {name:'Colosso',hp:950,speed:17,r:32,color:'#ff466f',breach:45}
+];
+const storageKey = 'esquadrao-da-horda-v1';
+let profileKey = '', profile = null, state = null, selected = 0, running = false;
+let last = 0, saveClock = 0, effects = [], loginPending = false;
+let message = '', messageTime = 0, paintTime = 0;
+const clamp = (n,min,max) => Math.max(min,Math.min(n,max));
+function readProfiles(){
+ const raw = localStorage.getItem(storageKey);
+ return raw ? JSON.parse(raw) : {};
+}
+function save(){
+ if (!profile) return true;
+ try {
+  const profiles = readProfiles();
+  profile.run = state;
+  profiles[profileKey] = profile;
+  localStorage.setItem(storageKey,JSON.stringify(profiles));
+  return true;
+ } catch {
+  $('profileStatus').textContent = 'O navegador não conseguiu salvar o progresso.';
+  return false;
+ }
+}
+async function pinHash(key,pin,salt){
+ const input = new TextEncoder().encode(key+'|'+salt+'|'+pin);
+ const buffer = await crypto.subtle.digest('SHA-256',input);
+ return Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+$('login').addEventListener('submit',async event=>{
+ event.preventDefault();
+ if (loginPending) return;
+ const name = $('name').value.trim(), pin = $('pin').value;
+ if (!name) { $('profileStatus').textContent = 'Digite um nome para o perfil.'; return; }
+ const key = 'user:'+name.toLocaleLowerCase('pt-BR');
+ loginPending = true;
+ try {
+  const entry = readProfiles()[key];
+  const salt = entry ? entry.salt : Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-');
+  const hash = await pinHash(key,pin,salt);
+  if (entry && entry.hash!==hash) { $('profileStatus').textContent='PIN incorreto.'; return; }
+  profileKey=key;
+  profile=entry || {name,salt,hash,unlocked:0,hits:0,inventory:[0],run:null};
+  state=profile.run;
+  selected=state?.stage ?? 0;
+  running=false;
+  effects=[];
+  messageTime=0;
+  $('login').hidden=true;
+  $('profile').hidden=false;
+  $('controls').hidden=false;
+  $('pin').value='';
+  $('profileStatus').textContent=profile.name;
+  save();
+  updateUI();
+ } catch {
+  $('profileStatus').textContent='Não foi possível abrir o perfil. Use um navegador com armazenamento local e abra por HTTPS ou neste computador.';
+ } finally { loginPending=false; }
+});
+$('exit').onclick=()=>{
+ running=false;
+ if (!save()) { updateUI(); return; }
+ profile=null; state=null; profileKey=''; effects=[]; messageTime=0;
+ $('login').hidden=false; $('profile').hidden=true; $('controls').hidden=true;
+ $('profileStatus').textContent='';
+ updateUI();
+};
+function announce(text){message=text;messageTime=3.6;}
+function newRun(stage){
+ return {stage,wave:1,phase:'combat',tick:0,spawn:0.8,count:0,lane:1,aimTime:0,
+  hp:100,squad:Array.from({length:stage===0?1:stage===1?3:4},(_,i)=>({gun:i===0?(profile.loadout??0):0,cd:0})),enemies:[],items:[],towers:[null,null,null],scrap:0,
+  air:1,strike:null,warning:null,kills:0,shots:0,serial:0};
+}
+function advancing(){
+ const mode=missions[state.stage].mode;
+ return mode==='advance'||(mode==='hybrid'&&state.wave===1);
+}
+function rewardGun(index){
+ if (!profile.inventory.includes(index)) profile.inventory.push(index);
+ equip(index);
+}
+function equip(index){
+ const usable=[...state.squad].reverse().find(unit=>unit.gun===0) || state.squad[state.squad.length-1];
+ usable.gun=index; usable.cd=0;
+ announce(guns[index][0]+' equipada!');
+}
+function recruit(amount){
+ for(let i=0;i<amount&&state.squad.length<10;i++) state.squad.push({gun:0,cd:0});
+ announce('+'+amount+' reforço'+(amount===1?'':'s'));
+}
+function spawnEnemy(kind,lane,y=46){
+ const t=types[kind];
+ const hp=Math.round(t.hp*(1+state.stage*.14));
+ state.enemies.push({kind,lane,y,hp,max:hp,id:++state.serial,switchAt:kind===3?190:0,charge:0});
+}
+function spawnItems(){
+ const w=state.wave, stage=state.stage, side=(w+stage)%2===0?0:2;
+ const order=[[1,5,8],[2,3,4],[6,7,9,10],[11,12,13,15],[16,17,18,19,13]];
+ const unlocked=order[stage][w-1];
+ if (advancing()){
+  state.items.push({type:'gate',lane:side,y:stage===0&&w===1?190:100,amount:w===1?1:2});
+ }
+ state.items.push({type:'crate',lane:2-side,y:advancing()?48:155,gun:unlocked,hits:0,goal:12+stage*3});
+ if (w===1&&profile.hits<500){
+  state.items.push({type:'heavy',lane:1,y:27,gun:14,hits:profile.hits,goal:500});
+ }
+ if (w===1&&profile.hits>=500){state.items.push({type:'crate',lane:1,y:40,gun:14,hits:0,goal:10});}
+}
+function move(lane){
+ if (!running||!state||state.phase==='won'||state.phase==='lost') return;
+ lane=clamp(lane,0,2);
+ if(lane!==state.lane){state.lane=lane;state.aimTime=0;}
+}
+function fireAir(){
+ if (!running||state.phase!=='combat'||!state.air||state.strike) return;
+ state.air--;
+ state.strike={lane:state.lane,time:2,round:state.stage>=2};
+ announce(state.strike.round?'Bombardeio a caminho!':'Rasante a caminho!');
+ updateUI();
+}
+function buildTower(){
+ if (!running||missions[state.stage].mode!=='hybrid'||state.phase!=='setup'||state.scrap<2||state.towers[state.lane]||state.squad.length<2) return;
+ const operator=state.squad.pop();
+ state.towers[state.lane]={gun:operator.gun,cd:0};
+ state.scrap-=2;
+ announce('Torre montada na faixa '+(state.lane+1));
+ save();
+ updateUI();
+}
+function startWave(){
+ state.phase='combat';state.tick=0;state.spawn=.65;state.count=0;state.items=[];
+ state.warning=null;state.strike=null;state.air=1;state.aimTime=0;
+ spawnItems();save();
+}
+function finishWave(){
+ const mission=missions[state.stage];
+ if(state.wave===mission.waves){
+  state.phase='won';running=false;
+  profile.unlocked=Math.max(profile.unlocked,Math.min(missions.length-1,state.stage+1));
+  announce('Missão concluída!');
+ } else {
+  state.wave++;
+  state.hp=Math.min(100,state.hp+22);
+  if (mission.mode==='defense'||mission.mode==='hybrid'){
+   state.phase='setup';state.scrap+=2;
+   if(state.squad.length<2) recruit(1);
+   announce(mission.mode==='hybrid'?'Use um recruta para operar uma torre ou inicie a próxima onda.':'Prepare a próxima defesa.');
+  } else startWave();
+ }
+ save();updateUI();
+}
+function hit(enemy,damage){
+ if(enemy.hp<=0)return;
+ enemy.hp-=damage;
+ if(enemy.hp<=0){state.kills++;effect(lanes[enemy.lane],enemy.y,'#ff9b86',18);}
+}
+function effect(x,y,color,r){effects.push({x,y,color,r,life:.25});}
+function shoot(unit,lane,fromTower=false){
+ const [,damage,interval,style]=guns[unit.gun];
+ let cooldown=interval;
+ if(style==='spin') cooldown=Math.max(.075,interval-state.aimTime*.1);
+ if(style==='heat' && state.tick%4>2.8) return .22;
+ const crate=state.items.filter(item=>item.lane===lane&&item.type!=='gate').sort((a,b)=>b.y-a.y)[0];
+ const live=state.enemies.filter(e=>e.hp>0).sort((a,b)=>b.y-a.y);
+ const inLane=live.filter(e=>e.lane===lane);
+ const top=inLane[0];
+ const hits=style==='burst'?3:style==='dual'||style==='double'?2:1;
+ const shotY=fromTower?492:535;
+ const color=fromTower?'#77f1c4':style==='chain'?'#ad9bff':'#ffe697';
+ const useCrate=crate&&(!top||crate.y>=top.y-8);
+ state.shots+=hits;
+ effects.push({x:lanes[lane]+(Math.random()-.5)*32,y:shotY,to:useCrate?crate.y:top?.y??55,color,life:.1});
+ if(useCrate){
+  crate.hits=Math.min(crate.goal,crate.hits+hits);
+  if(crate.type==='heavy') profile.hits=crate.hits;
+  if(crate.hits>=crate.goal){
+   state.items.splice(state.items.indexOf(crate),1);
+   rewardGun(crate.gun);
+   save();
+  }
+  return cooldown;
+ }
+ if(!top)return cooldown;
+ const near=(radius,depth,center=top)=>live.filter(e=>Math.abs(e.lane-center.lane)<=radius&&Math.abs(e.y-center.y)<=depth);
+ const push=e=>{if(e.kind<2)e.y-=22;};
+ switch(style){
+  case 'bounce': hit(top,damage);{const second=near(1,115).find(e=>e!==top);if(second)hit(second,damage*.8);}break;
+  case 'push': hit(top,damage);push(top);break;
+  case 'move': hit(top,damage*(state.aimTime<.28?1.7:1));break;
+  case 'burst': hit(top,damage*3.5);break;
+  case 'scope': hit(top,damage*(top.kind===4&&top.charge>0?2.3:1));break;
+  case 'pierce': inLane.slice(0,3).forEach(e=>hit(e,damage));break;
+  case 'short': case 'spread': case 'double': case 'wave':{
+   const limit=style==='short'?350:style==='double'?285:185;
+   const targets=near(style==='double'?0:1,style==='short'?104:68);
+   targets.forEach(e=>{hit(e,damage*(style==='double'?2:1)*(e.y>limit?1:.45));if(style==='wave')push(e);});
+   break;
+  }
+  case 'lob': case 'blast':{
+   const center=style==='lob'?(inLane[2]||inLane[1]||top):top;
+   near(1,style==='lob'?85:72,center).forEach(e=>hit(e,e===center?damage:damage*.75));
+   effect(lanes[lane],center.y,'#ffad76',62);
+   break;
+  }
+  case 'chain': near(1,128).slice(0,5).forEach((e,i)=>hit(e,damage*(1-i*.12)));break;
+  case 'beam': inLane.forEach(e=>hit(e,damage));break;
+  default: hit(top,damage*hits);
+ }
+ return cooldown;
+}
+function simulate(dt){
+ const stage=state.stage,wave=state.wave,mission=missions[stage];
+ state.tick+=dt;state.aimTime+=dt;
+ const limit=12+wave*5+stage*2;
+ state.spawn-=dt;
+ if(state.spawn<=0&&state.count<limit){
+  const kind=state.count%8===7&&stage>0?3:state.count%5===4?2:state.count%3===0?0:1;
+  const lane=(state.count+wave+Math.floor(state.count/4))%3;
+  spawnEnemy(kind,lane);state.count++;state.spawn=Math.max(.47,1.08-wave*.08-stage*.045);
+  if(state.count===limit&&wave===mission.waves)spawnEnemy(4,1,34);
+ }
+ if(advancing()&&state.tick>10&&state.tick-dt<=10){
+  state.items.push({type:'gate',lane:wave%3,y:42,amount:2});
+ }
+ if(stage===3&&Math.floor(state.tick/7)>Math.floor((state.tick-dt)/7)){
+  state.warning={lane:(Math.floor(state.tick/7)+wave)%3,time:2.2};
+ }
+ for(const item of state.items){
+  item.y+=(advancing()?(item.type==='heavy'?22:56):15)*dt;
+  if(item.y>=535){
+   if(item.type==='gate'&&item.lane===state.lane)recruit(item.amount);
+   item.expired=true;
+  }
+ }
+ state.items=state.items.filter(item=>!item.expired);
+ for(const unit of state.squad){
+  unit.cd-=dt;
+  if(unit.cd<=0)unit.cd=shoot(unit,state.lane);
+ }
+ state.towers.forEach((tower,lane)=>{
+  if(!tower)return;
+  tower.cd-=dt;
+  if(tower.cd<=0)tower.cd=shoot(tower,lane,true)+.25;
+ });
+ for(const enemy of state.enemies){
+  if(enemy.hp<=0)continue;
+  const type=types[enemy.kind];
+  enemy.y+=type.speed*dt;
+  if(enemy.switchAt&&enemy.y>enemy.switchAt){enemy.lane=(enemy.lane+1)%3;enemy.switchAt=0;}
+  if(enemy.kind===4&&enemy.y>165&&enemy.charge===0){
+   enemy.charge=1;state.warning={lane:state.lane,time:2.4};
+  }
+  if(enemy.y>502){
+   state.hp=Math.max(0,state.hp-Math.ceil(type.breach*.7));enemy.hp=0;
+   effect(lanes[enemy.lane],513,'#ff5471',54);
+  }
+ }
+ if(state.warning){
+  state.warning.time-=dt;
+  if(state.warning.time<=0){
+   if(state.warning.lane===state.lane)state.hp=Math.max(0,state.hp-22);
+   effect(lanes[state.warning.lane],490,'#ff5471',115);
+   state.warning=null;
+  }
+ }
+ if(state.strike){
+  const strike=state.strike;
+  strike.time-=dt;
+  if(strike.time<=0){
+   const radius=strike.round?1:0;
+   state.enemies.forEach(e=>{
+    if(Math.abs(e.lane-strike.lane)<=radius&&(!strike.round||Math.abs(e.y-320)<155))hit(e,strike.round?180:240);
+   });
+   effect(lanes[strike.lane],320,'#ffcc80',strike.round?154:90);
+   state.strike=null;
+  }
+ }
+ state.enemies=state.enemies.filter(e=>e.hp>0);
+ if(state.hp<=0){
+  state.hp=0;state.phase='lost';running=false;save();updateUI();
+ } else if(state.count>=limit&&!state.enemies.length){
+  if(wave===mission.waves||!advancing()||state.tick>19)finishWave();
+ }
+}
+function choose(stage){
+ if(!profile||stage>profile.unlocked||running)return;
+ if(state&&state.stage!==stage&&['combat','setup'].includes(state.phase)){
+  announce('Conclua a missão em andamento para trocar de fase.');
+  updateUI();return;
+ }
+ selected=stage;updateUI();
+}
+function togglePlay(){
+ if(!profile)return;
+ if(running&&state.phase==='setup'){startWave();updateUI();return;}
+ if(running){running=false;save();updateUI();return;}
+ if(!state||state.stage!==selected||['won','lost'].includes(state.phase)){
+  state=newRun(selected);effects=[];
+  spawnItems();announce(missions[selected].intro);
+ }
+ running=true;last=0;save();updateUI();
+}
+$('play').onclick=togglePlay;
+$('air').onclick=fireAir;
+$('tower').onclick=buildTower;
+$('left').onclick=()=>{if(state)move(state.lane-1);};
+$('right').onclick=()=>{if(state)move(state.lane+1);};
+window.addEventListener('keydown',event=>{
+ if(!profile||event.target.matches('input,select,summary')||(event.key===' '&&event.target.matches('button')))return;
+ const key=event.key.toLowerCase();
+ const actions={'arrowleft':$('left').onclick,'a':$('left').onclick,'arrowright':$('right').onclick,
+  'd':$('right').onclick,' ':togglePlay,'f':fireAir,'t':buildTower};
+ if(actions[key]){event.preventDefault();if(!event.repeat)actions[key]();}
+});
+function drag(event){
+ const rect=$('field').getBoundingClientRect();
+ const width=Math.min(rect.width,rect.height*720/620);
+ move(Math.floor((event.clientX-rect.left-(rect.width-width)/2)/width*3));
+}
+$('field').onpointerdown=event=>{$('field').setPointerCapture(event.pointerId);drag(event);};
+$('field').onpointermove=event=>{if($('field').hasPointerCapture(event.pointerId))drag(event);};
+function pauseOnLeave(){
+ if(!profile)return;
+ running=false;save();updateUI();
+}
+window.addEventListener('pagehide',pauseOnLeave);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseOnLeave();});
+const missionButtons=missions.map((mission,i)=>{
+ const button=document.createElement('button');
+ button.onclick=()=>choose(i);
+ $('missions').append(button);
+ return button;
+});
+const weaponLabels=guns.map(gun=>{
+ const li=document.createElement('li');
+ $('weaponList').append(li);
+ return li;
+});
+let loadoutSignature='';
+$('loadout').onchange=()=>{profile.loadout=Number($('loadout').value);save();};
+function updateUI(){
+ const active=state?.stage===selected ? state:null;
+ $('missionName').textContent=profile?missions[selected].name:'Campo de batalha';
+ $('stats').textContent=active?'Onda '+active.wave+'/'+missions[active.stage].waves+' · Base '+active.hp+'% · '+active.squad.length+' combatentes':'';
+ const paused=active&&['combat','setup'].includes(active.phase);
+ const objective=active?.phase==='won'?'Missão concluída. Escolha outra missão ou jogue de novo.':active?.phase==='lost'?'O posto caiu. Tente de novo.':
+  active?.phase==='setup'?(missions[active.stage].mode==='hybrid'?'Preparação · '+active.scrap+' peças. Selecione uma faixa e monte uma torre por 2 peças.':'Preparação · Inicie a próxima onda quando estiver pronto.'):
+  active&&running?(advancing()?'Deslize entre as faixas. Os disparos são automáticos.':'Posto fixo. Selecione por onde atirar.'):
+  paused?'Partida salva. Continue da mesma onda.':missions[selected].intro;
+ $('hint').textContent=!profile?'Entre com um perfil para jogar.':messageTime>0&&running?message:objective;
+ $('play').textContent=running?(active.phase==='setup'?'Iniciar onda':'Pausar'):paused?'Continuar missão':active?'Jogar de novo':'Jogar';
+ $('air').disabled=!running||active?.phase!=='combat'||!active?.air||!!active?.strike;
+ $('tower').hidden=missions[selected].mode!=='hybrid';
+ $('tower').disabled=!running||active?.phase!=='setup'||active?.scrap<2||active?.squad.length<2||!!active?.towers[active?.lane];
+ $('left').disabled=!running;$('right').disabled=!running;
+ if(!profile)return;
+ const signature=profile.inventory.join(',');
+ if(signature!==loadoutSignature){
+  loadoutSignature=signature;
+  $('loadout').replaceChildren(...profile.inventory.map(index=>{
+   const option=document.createElement('option');option.value=index;option.textContent=guns[index][0];return option;
+  }));
+ }
+ $('loadout').value=profile.loadout??0;
+ $('vault').textContent='Cofre pesado '+profile.hits+'/500';
+ missionButtons.forEach((button,i)=>{
+  const locked=i>profile.unlocked;
+  button.disabled=locked||running;
+  button.textContent=(locked?'🔒 ':'')+missions[i].name;
+  button.setAttribute('aria-current',String(i===selected));
+ });
+ weaponLabels.forEach((li,i)=>{li.textContent=guns[i][0]+' · '+guns[i][4]+(profile.inventory.includes(i)?' ✓':'');});
+}
+function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
+function circle(x,y,r,color){
+ ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+}
+function text(label,x,y,size=16,color='#f5ffff'){
+ ctx.font='bold '+size+'px system-ui';ctx.textAlign='center';ctx.fillStyle=color;ctx.fillText(label,x,y);
+}
+function unit(x,y,tint){
+ ctx.save();ctx.translate(x,y);ctx.fillStyle='#070f18';ctx.beginPath();ctx.ellipse(2,11,15,7,0,0,7);ctx.fill();
+ rect(-11,-3,22,14,tint);circle(0,-6,10,tint);rect(-7,-10,14,4,'#e2ffff');rect(9,-17,5,20,'#bedbdb');ctx.restore();
+}
+function draw(){
+ const active=state?.stage===selected?state:null;
+ const scene=missions[selected];
+ rect(0,0,720,620,'#0b171c');
+ const shift=active&&advancing()?active.tick*55%47:0;
+ for(let i=0;i<3;i++){
+  const x=lanes[i];
+  rect(x-88,0,176,620,scene.theme);
+  if(active?.lane===i)rect(x-87,0,174,620,'#79f3c415');
+  for(let y=-45;y<620;y+=47)rect(x-89,y+shift,3,19,'#a1bbd83b');
+  text(['ESQUERDA','CENTRO','DIREITA'][i],x,21,13,'#a8c5ce');
+  if(active?.warning?.lane===i)rect(x-86,28,172,509,Math.floor(paintTime*9)%2?'#ff456344':'#ff45631c');
+  if(active?.strike?.lane===i)rect(x-86,28,172,492,'#f9ce6540');
+ }
+ rect(72,508,576,5,'#73ebc5');
+ rect(89,596,542,5,'#374e5a');
+ if(!active){
+  rect(94,218,532,142,'#081719d9');
+  text(profile?scene.name:'Esquadrão da Horda',360,278,36);
+  text(profile?'Selecione Jogar para começar':'Acesse seu perfil para iniciar a operação',360,318,19,'#a6dacc');
+  unit(360,543,'#77ebc2');return;
+ }
+ for(const item of active.items){
+  const x=lanes[item.lane], y=item.y;
+  const gate=item.type==='gate';
+  rect(x-72,y-15,144,30,gate?'#16775e':item.type==='heavy'?'#b36a2b':'#6b5535');
+  rect(x-72,y-15,144,2,gate?'#99ffd3':'#ffca77');
+  text(gate?'+'+item.amount+' REFORÇO'+(item.amount>1?'S':''):item.hits+'/'+item.goal,x,y+7,20);
+  if(!gate)text(guns[item.gun][0],x,y+32,14,'#ffe7ad');
+ }
+ for(const enemy of active.enemies){
+  const type=types[enemy.kind],x=lanes[enemy.lane]+(enemy.id%5-2)*12,y=enemy.y,r=type.r;
+  circle(x+3,y+6,r+2,'#0e1820');circle(x,y,r,type.color);circle(x-3,y-4,r*.39,'#382030');
+  rect(x-r,y-r-8,r*2,3,'#481e35');rect(x-r,y-r-8,r*2*enemy.hp/enemy.max,3,'#ffebd9');
+  if(enemy.kind>=2)text(type.name,x,y+r+15,12,'#ffdce9');
+ }
+ active.towers.forEach((tower,i)=>{
+  const x=lanes[i];
+  if(tower){rect(x-26,476,52,25,'#487b83');unit(x,483,'#88e9fa');}
+  else if(active.phase==='setup'&&scene.mode==='hybrid'){rect(x-27,478,54,24,'#567b8066');text('T',x,496,16);}
+ });
+ active.squad.forEach((member,i)=>{
+  const x=(advancing()?lanes[active.lane]:360)+(i%4-1.5)*27+(active.squad.length===1?40.5:0);
+  unit(x,542+Math.floor(i/4)*20,member.gun?'#73baff':'#77ebc2');
+ });
+ if(!advancing()){text('▲',lanes[active.lane],535,16,'#a1ffe7');}
+ for(const effect of effects){
+  ctx.globalAlpha=Math.min(1,effect.life*8);
+  if(effect.to!==undefined){
+   ctx.strokeStyle=effect.color;ctx.lineWidth=3;
+   ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(effect.x,effect.to);ctx.stroke();
+  } else circle(effect.x,effect.y,effect.r,effect.color);
+  ctx.globalAlpha=1;
+ }
+ if(active.warning)text('SAIA DESTA FAIXA',lanes[active.warning.lane],70,15,'#ffc0c7');
+ if(active.strike)text('✦ '+active.strike.time.toFixed(1)+' s',lanes[active.strike.lane],110,22,'#fff1a1');
+ if(!running||active.phase==='setup'){
+  rect(120,260,480,92,'#0a141be8');
+  text(active.phase==='won'?'MISSÃO CONCLUÍDA':active.phase==='lost'?'O POSTO CAIU':
+   active.phase==='setup'?'PREPARAÇÃO':'EM PAUSA',360,316,31);
+ }
+}
+let uiClock=0;
+function frame(now){
+ const dt=last?Math.min(.045,(now-last)/1000):0;
+ last=now;paintTime+=dt;
+ if(messageTime>0)messageTime-=dt;
+ if(running&&state.phase==='combat'){
+  simulate(dt);saveClock+=dt;
+  if(saveClock>=1.5){saveClock=0;save();}
+ }
+ for(const effect of effects)effect.life-=dt;
+ effects=effects.filter(effect=>effect.life>0);
+ draw();
+ uiClock+=dt;
+ if(uiClock>.22){uiClock=0;updateUI();}
+ requestAnimationFrame(frame);
+}
+updateUI();
+requestAnimationFrame(frame);
+</script>
+</html>
