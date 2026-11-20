@@ -15,6 +15,7 @@
 .eyebrow{font-size:.78rem;font-weight:900;letter-spacing:.17em;color:#c3ee90}.primary{background:var(--mint);color:var(--ink)}.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.menu{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.menu button{font-size:.83rem;padding:.45rem .5rem}.menu small{margin-top:3px;font-size:.72rem}.slot,.tag{position:absolute;left:0;top:0;white-space:nowrap}.slot{pointer-events:auto;min-height:32px;padding:5px 8px;border:1px solid #b5f4dc90;border-radius:6px;background:#173d3ae8;font-size:.74rem}.tag{font-weight:900;font-size:clamp(.78rem,2.7vw,1.12rem);text-align:center;padding:.12rem .45rem;border-radius:6px;background:#1a3c2eeb;color:#c9ff90;box-shadow:0 1px 6px #13272555}.tag.bad{background:#65294cef;color:#ffd4e0}.tag small{font-size:.69rem;line-height:1.1;color:inherit}.tag.damage{color:#fff5cb;background:transparent;text-shadow:0 2px 3px #451c12;box-shadow:none}.tag.army{color:#e4fbff;background:#114b6cee;font-size:1.13rem}.tag.boss{background:#632b38;color:#ffeabe}.tag.boss::after{content:"";display:block;width:70px;height:5px;margin:2px auto;background:linear-gradient(90deg,#ffc66f var(--meter),#3d1a2b var(--meter));border-radius:4px}
 #callout{position:absolute;z-index:1;top:16%;left:50%;transform:translateX(-50%);pointer-events:none;text-align:center;font-weight:900;font-size:clamp(1.1rem,4vw,2.25rem);text-shadow:0 2px 6px #172822;background:#162c25d9;border-radius:9px;padding:.25rem .8rem;max-width:92%;width:max-content}
 #pulse{position:absolute;z-index:2;right:max(13px,env(safe-area-inset-right));bottom:max(13px,env(safe-area-inset-bottom));background:#cafa82;color:#203120;min-width:93px}#hint{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);text-align:center;background:#172d28dc;padding:6px 10px;border-radius:8px;pointer-events:none;max-width:calc(100% - 124px);width:max-content;font-size:.83rem;left:13px;transform:none}
+.card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:.8rem .5rem;background:linear-gradient(160deg,#25433c,#172b27);border:1px solid #cafb8355}.card svg{width:54px;height:54px;fill:var(--mint);filter:drop-shadow(0 3px 0 #0b1a17)}.card:hover:enabled{background:linear-gradient(160deg,#2f5a4f,#1c3530)}.slot.mini{min-height:34px;min-width:34px;padding:2px 8px;font-size:1rem;border-radius:50%;background:#173d3acc}
 @media(max-height:480px){#panel{padding:8px}#panel p{margin:4px 0}#panel[data-phase=menu]{padding:14px}#panel h1{font-size:2.5rem}}
 </style>
 </head>
@@ -25,7 +26,7 @@
   <div><strong id="life">Base 100%</strong><div id="hp"><i></i></div></div><strong id="stage"></strong>
   <div class="row"><button id="sound" aria-label="Silenciar som" aria-pressed="false">Som</button><button id="pause">Pausa</button></div>
  </header>
- <div id="callout" hidden></div><div id="hint" hidden>Mova com WASD, setas ou arrastando. Alinhe o pelotão com a horda ou os portais.</div><button id="pulse" hidden aria-label="Disparar pulso à frente">Pulso</button>
+ <div id="callout" hidden></div><div id="hint" hidden>Toque num portal ou na horda para concentrar o fogo. Toque no ＋ para montar torre. Espaço dispara o pulso.</div><button id="pulse" hidden aria-label="Disparar pulso à frente">Pulso</button>
  <section id="panel" data-phase="menu"><p>Carregando o campo 3D…</p></section>
 </main>
 <script type="module">
@@ -128,6 +129,43 @@ const towers={
  shot:{name:'Escopeta',cost:5,color:0xfdb266,range:7.4,detail:'Leque e empurrão'},
  bomb:{name:'Granadeira',cost:7,color:0xb99af9,range:14,detail:'Explosão em área'}
 };
+// Arma que o pelotão inteiro usa. Trocada pelas recompensas entre ondas.
+const GUNS={
+ rifle:{name:'Fuzil',rate:1,damage:1,pellets:1,pierce:1,style:'plain'},
+ mg:{name:'Metralhadora pesada',rate:2.1,damage:.66,pellets:1,pierce:1,style:'plain'},
+ shotgun:{name:'Escopeta',rate:.8,damage:.55,pellets:3,pierce:1,style:'plain'},
+ grenade:{name:'Lança-granadas',rate:.85,damage:.9,pellets:1,pierce:1,style:'grenade'},
+ pierce:{name:'Rifle perfurante',rate:.72,damage:1.25,pellets:1,pierce:3,style:'plain'}
+};
+const ICON_PATHS={
+ mg:'<rect x="4" y="20" width="30" height="9" rx="2"/><rect x="34" y="22" width="11" height="4"/><rect x="34" y="27" width="11" height="2"/><rect x="12" y="29" width="7" height="11" rx="2"/><rect x="21" y="29" width="6" height="7"/><circle cx="24" cy="16" r="4"/>',
+ shotgun:'<rect x="3" y="20" width="16" height="9" rx="3"/><rect x="17" y="21" width="28" height="4"/><rect x="17" y="26" width="28" height="3"/><rect x="24" y="29" width="10" height="5" rx="2"/>',
+ grenade:'<rect x="5" y="21" width="22" height="8" rx="2"/><rect x="24" y="17" width="20" height="15" rx="4"/><rect x="11" y="29" width="7" height="10" rx="2"/><circle cx="40" cy="12" r="5"/>',
+ pierce:'<rect x="3" y="22" width="18" height="7" rx="2"/><rect x="20" y="23" width="26" height="3"/><rect x="18" y="16" width="14" height="4" rx="2"/><rect x="9" y="29" width="6" height="9" rx="2"/><path d="M38 31l8 3-8 3z"/>',
+ air:'<path d="M24 4l4 14 16 6-16 3-3 14 6 4H17l6-4-3-14-16-3 16-6z"/>',
+ tower:'<rect x="12" y="30" width="24" height="12" rx="2"/><rect x="16" y="20" width="16" height="11" rx="2"/><rect x="28" y="23" width="16" height="5"/><rect x="8" y="40" width="32" height="4" rx="2"/>',
+ troops:'<circle cx="16" cy="13" r="6"/><rect x="9" y="21" width="14" height="17" rx="5"/><circle cx="32" cy="13" r="6"/><rect x="25" y="21" width="14" height="17" rx="5"/><path d="M21 42h6v-4h4v-6h-4v-4h-6v4h-4v6h4z"/>',
+ repair:'<path d="M24 44S6 32 6 18a9 9 0 0118-3 9 9 0 0118 3c0 14-18 26-18 26z"/>',
+ power:'<path d="M27 3L9 27h13l-3 18 20-26H25z"/>'
+};
+const icon=kind=>'<svg viewBox="0 0 48 48" aria-hidden="true">'+ICON_PATHS[kind]+'</svg>';
+const rewardPool=[
+ {id:'mg',icon:'mg',title:'Metralhadora pesada',detail:'O pelotão atira 2× mais rápido',gun:'mg'},
+ {id:'shotgun',icon:'shotgun',title:'Escopetas',detail:'Leque de 3 balas por tiro',gun:'shotgun'},
+ {id:'grenade',icon:'grenade',title:'Lança-granadas',detail:'1 a cada 3 soldados lança granada',gun:'grenade'},
+ {id:'pierce',icon:'pierce',title:'Rifle perfurante',detail:'Cada bala atravessa 3 inimigos',gun:'pierce'},
+ {id:'air',icon:'air',title:'Bombardeio',detail:'Pulso 2× mais forte e recarga menor',apply:()=>{run.pulseLevel=(run.pulseLevel??1)+1;}},
+ {id:'tower',icon:'tower',title:'Torre grátis',detail:'Monte uma torre sem gastar soldados',apply:()=>{run.free++;}},
+ {id:'troops',icon:'troops',title:'+15 soldados',detail:'Reforços chegam agora',apply:()=>{run.army=Math.min(120,run.army+15);}},
+ {id:'repair',icon:'repair',title:'Reparar a base',detail:'Recupera 35 de vida',apply:()=>{run.health=Math.min(100,run.health+35);}},
+ {id:'power',icon:'power',title:'Munição pesada',detail:'+35% de dano em tudo',apply:()=>{run.power*=1.35;}}
+];
+function rollRewards(){
+ const pool=rewardPool.filter(r=>r.gun!==(run.gun??'rifle')&&!(r.id==='repair'&&run.health>85));
+ const weapons=pool.filter(r=>r.gun),others=pool.filter(r=>!r.gun);
+ const pick=list=>list.splice(Math.floor(Math.random()*list.length),1)[0];
+ return [pick(weapons),pick(others),pick(Math.random()<.5?weapons:others)??pick(others)].map(r=>r.id);
+}
 const gates={
  five:{name:'+5 soldados',hp:20,color:0x5dffb0},
  ten:{name:'+10 soldados',hp:45,color:0x5dffb0},
@@ -246,7 +284,7 @@ function applyGate(g){
  audio(gates[g.type].bad?'trap':'reward');
 }
 function installation(type){
- if(phase!=='prep'||activeSlot<0)return;
+ if(!['prep','wave'].includes(phase)||activeSlot<0)return;
  const current=run.slots[activeSlot],info=towers[type];
  if(!info||(current&&current.type!==type)||current?.level>=3)return;
  const cost=current?3+current.level:run.free?0:info.cost;
@@ -294,7 +332,7 @@ function breach(amount,loss){
  }else{run.health=Math.max(0,run.health-amount);red=.45;}
  audio('impact');
 }
-function fire(x,z,target,type,amount,spread=0,pellets=1){
+function fire(x,z,target,type,amount,spread=0,pellets=1,pierce=1){
  const yaw=Math.atan2(target.x-x,z-target.z);
  const color=type==='bomb'?0xd9a9ff:type==='shot'?0xffb24f:type==='peloton'?0xffe375:0x73faff;
  if(type==='bomb'){
@@ -304,7 +342,8 @@ function fire(x,z,target,type,amount,spread=0,pellets=1){
    const angle=yaw+(i-(pellets-1)/2)*spread;
    const speed=type==='peloton'?94:type==='shot'?39:59;
    run.bolts.push({type,x:x+Math.sin(angle)*.5,z:z-Math.cos(angle)*.5,
-    dx:Math.sin(angle)*speed,dz:-Math.cos(angle)*speed,life:type==='shot'?.23:.81,amount,color});
+    dx:Math.sin(angle)*speed,dz:-Math.cos(angle)*speed,life:type==='shot'?.23:.81,amount,color,
+    gate:target.gateId,pierce,seen:[]});
   }
  }
  if(type!=='peloton')debris.push({x,z,y:.9,vx:0,vz:0,vy:0,life:.07,color,flash:true});
@@ -332,34 +371,65 @@ function advanceBolts(dt){
    if(t>=nearest||Math.hypot(e.x-b.x-(nx-b.x)*t,e.z-b.z-(nz-b.z)*t)>r)return;
    nearest=t;target=e;isGate=gate;
   };
-  for(const e of run.foes)test(e,enemyTypes[e.type].r+.18,false);
-  if(b.type==='peloton')for(const g of run.gates)test(g,.96,true);
+  for(const e of run.foes)if(!b.seen?.includes(e.id))test(e,enemyTypes[e.type].r+.18,false);
+  if(b.type==='peloton')for(const g of run.gates)if(b.gate===g.id)test(g,.96,true);
   if(target){
    if(isGate){
     target.hp--;target.flash=.1;
     if(!target.hp)applyGate(target);
-   }else damage(target,b.amount,b.type);
+   }else{
+    damage(target,b.amount,b.type);
+    if((b.pierce??1)>1){b.pierce--;b.seen.push(target.id);b.x=nx;b.z=nz;keep.push(b);}
+   }
   }else if(b.life>0&&nz>FRONT-3&&Math.abs(nx)<18){b.x=nx;b.z=nz;keep.push(b);}
  }
  run.bolts=keep;
 }
+// O pelotão fica fixo na barragem: o jogador comanda, não pilota.
 function updateHero(dt){
- const x=run.heroX??0,z=run.heroZ??BASE;
- const left=movementKeys.has('KeyA')||movementKeys.has('ArrowLeft');
- const right=movementKeys.has('KeyD')||movementKeys.has('ArrowRight');
- const up=movementKeys.has('KeyW')||movementKeys.has('ArrowUp');
- const down=movementKeys.has('KeyS')||movementKeys.has('ArrowDown');
- const keyX=Number(right)-Number(left),keyZ=Number(down)-Number(up);
- const keyboard=!!(keyX||keyZ);
- const dx=keyboard?keyX:(run.heroTarget??x)-x;
- const dz=keyboard?keyZ:(run.heroTargetZ??z)-z;
- const length=Math.hypot(dx,dz),step=FIELD.speed*dt;
- const scale=length>0?(keyboard?step:Math.min(step,length))/length:0;
- run.heroX=clamp(x+dx*scale,FIELD.left,FIELD.right);
- run.heroZ=clamp(z+dz*scale,FIELD.front,FIELD.back);
- if(keyboard){run.heroTarget=run.heroX;run.heroTargetZ=run.heroZ;}
- run.heroVelocity=Math.hypot(run.heroX-x,run.heroZ-z)/dt;
+ run.heroX=0;run.heroZ=BASE;run.heroVelocity=0;
  run.recoil=Math.max(0,(run.recoil??0)-dt*12);
+ const focus=run.focus;
+ if(focus){
+  focus.time-=dt;
+  if(focus.gate){
+   const gate=run.gates.find(g=>g.id===focus.gate&&g.hp>0);
+   if(gate){focus.x=gate.x;focus.z=gate.z;}else run.focus=null;
+  }else focus.z+=2.6*dt;
+  if(run.focus&&focus.time<=0)run.focus=null;
+ }
+}
+// Toque no campo: foca um portal, um inimigo ou um grupo da horda.
+function setFocus(x,z){
+ if(phase!=='wave')return;
+ const gate=run.gates.find(g=>g.hp>0&&Math.hypot(g.x-x,g.z-z)<2.2);
+ if(gate){
+  run.focus=run.focus?.gate===gate.id?null:{gate:gate.id,x:gate.x,z:gate.z,time:30};
+  if(run.focus)signal('FOGO NO PORTAL',.9);
+  audio('pop');return;
+ }
+ const near=run.foes.filter(e=>e.hp>0).reduce((best,e)=>{
+  const d=Math.hypot(e.x-x,e.z-z);return d<(best?.d??4.5)?{e,d}:best;},null);
+ if(!near){run.focus=null;return;}
+ run.focus={x:near.e.x,z:near.e.z,time:4};
+ if(near.e.type==='boss')signal('FOGO NO COLOSSO',.9);
+ audio('pop');
+}
+// Cada soldado escolhe sozinho: foco do comandante primeiro, depois as maiores ameaças.
+function pelotonTargets(){
+ const reach=run.foes.filter(e=>e.hp>0&&e.z>ENTRY+1.5);
+ const focus=run.focus;
+ if(focus?.gate){
+  const gate=run.gates.find(g=>g.id===focus.gate);
+  if(gate)return [{x:gate.x,z:gate.z,gateId:gate.id}];
+ }
+ if(focus){
+  const group=reach.filter(e=>Math.hypot(e.x-focus.x,e.z-focus.z)<3.6)
+   .sort((a,b)=>Math.hypot(a.x-focus.x,a.z-focus.z)-Math.hypot(b.x-focus.x,b.z-focus.z));
+  if(group.length)return group.slice(0,6);
+ }
+ const danger=e=>e.z+(e.type==='boss'||e.type==='armor'?4:0);
+ return reach.sort((a,b)=>danger(b)-danger(a)).slice(0,10);
 }
 function formationPoint(index,count,heroX,heroZ=run.heroZ??BASE){
  if(index===0)return {x:heroX,z:heroZ};
@@ -372,13 +442,22 @@ function firePeloton(dt){
  const clocks=run.soldierClocks??(run.soldierClocks=[]);
  clocks.length=Math.min(clocks.length,count);
  if(!count)return;
- const cadence=run.boost>0?2:1;
- const damage=SOLDIER_DAMAGE*run.power*run.army/count;
+ const gun=GUNS[run.gun??'rifle'];
+ const cadence=(run.boost>0?2:1)*gun.rate;
+ const damage=SOLDIER_DAMAGE*run.power*gun.damage*run.army/count;
+ const targets=pelotonTargets();
+ if(!targets.length){clocks.length=0;return;}
  for(let i=0;i<count;i++){
   const time=(clocks[i]??random(0,SOLDIER_INTERVAL))-dt*cadence;
   if(time>0){clocks[i]=time;continue;}
   const {x,z}=formationPoint(i,count,run.heroX??0);
-  fire(x,z,{x,z:z-1},'peloton',damage);
+  const target=targets[i%targets.length];
+  if(gun.style==='grenade'&&!target.gateId&&i%3===0){
+   fire(x,z,{x:target.x,z:target.z+1.2},'bomb',damage*2.2);
+  }else{
+   fire(x,z,{x:target.x+random(-.25,.25),z:target.z,gateId:target.gateId},'peloton',damage,
+    gun.pellets>1?.09:0,gun.pellets,gun.pierce);
+  }
   (run.soldierShotAt??=[])[i]=run.clock;
   clocks[i]=time+SOLDIER_INTERVAL+random(-.038,.038);
   if(i===0)run.recoil=1;
@@ -387,7 +466,7 @@ function firePeloton(dt){
 function updateGame(dt){
  updateHero(dt);
  run.clock+=dt;
- if(!run.supplySent&&run.clock>=5){
+ if(false){
   run.supplySent=true;
   run.supply={x:(run.wave%2===0?-1:1)*6.1,expires:6};
   signal('REFORÇO NA SUA LINHA',1.15);
@@ -417,12 +496,10 @@ function updateGame(dt){
     e.warning-=dt;
     if(e.warning<=0){
      e.warning=0;e.nextAttack=5.6;
-     const target=e.attackX??0,targetZ=e.attackZ??BASE;
-     if(Math.hypot((run.heroX??0)-target,(run.heroZ??BASE)-targetZ)<2.1)breach(15,4);
-     else signal('ATAQUE ESQUIVADO',1);
-     burst(target,targetZ,0xff5159,16);
+     breach(15,7);shake=Math.max(shake,.6);
+     burst(e.attackX??0,e.attackZ??BASE,0xff5159,22);
     }
-   }else if(e.nextAttack<=0){e.warning=1.65;e.stagger=0;e.attackX=run.heroX??0;e.attackZ=run.heroZ??BASE;signal('DESVIE OU INTERROMPA O ATAQUE!',1.6);audio('alarm');}
+   }else if(e.nextAttack<=0){e.warning=2.2;e.stagger=0;e.attackX=0;e.attackZ=BASE+.8;signal('TOQUE NO COLOSSO PARA INTERROMPER!',1.8);audio('alarm');}
   }
   if(e.z>BASE-.7){breach(data.breach,data.loss);e.hp=0;}
  }
@@ -453,16 +530,11 @@ function updateGame(dt){
  }else if(run.cursor===run.schedule.length&&!run.foes.length&&!run.gates.length){
   if(run.wave===TOTAL-1){
    phase=run.phase='won';profile.victories++;audio('reward');
-  }else{phase=run.phase='reward';audio('reward');}
+  }else{phase=run.phase='reward';run.offer=rollRewards();audio('reward');}
   snapshot();refresh();
  }
 }
 
-const rewards=[
- {title:'+8 soldados',detail:'Mais tiros ou outra torre',apply:()=>{run.army=Math.min(120,run.army+8);}},
- {title:'+30% de dano',detail:'Disparos do pelotão',apply:()=>{run.power*=1.3;}},
- {title:'Reparar a base',detail:'Recupera até 30 pontos de vida',apply:()=>{run.health=Math.min(100,run.health+30);}}
-];
 function button(label,onClick,options={}){
  const el=document.createElement('button');
  el.textContent=label;el.onclick=onClick;el.disabled=!!options.disabled;
@@ -489,11 +561,15 @@ function startNew(){
 }
 function firePulse(){
  if(phase!=='wave'||(run.pulse??0)>0)return;
- run.pulse=8;
- const center={x:run.heroX??0,z:(run.heroZ??BASE)-7};
+ const level=run.pulseLevel??1;
+ run.pulse=Math.max(4,9-level*1.5);
+ const front=run.foes.filter(e=>e.hp>0).sort((a,b)=>b.z-a.z)[0];
+ const center=run.focus&&!run.focus.gate?{x:run.focus.x,z:run.focus.z}:front?{x:front.x,z:front.z-1}:{x:0,z:-4};
+ const radius=3.9+level*.6;
  for(const enemy of run.foes){
-  if(distance(center,enemy)<=3.9)damage(enemy,65,'bomb');
+  if(distance(center,enemy)<=radius)damage(enemy,65*level,'bomb');
  }
+ shake=Math.max(shake,.35);
  for(const gate of run.gates){
   if(gate.hp<=0||distance(center,gate)>3.9)continue;
   gate.hp=Math.max(0,gate.hp-4);gate.flash=.14;
@@ -521,8 +597,8 @@ function refresh(){
  if(phase==='menu'){
   const options=[button('Jogar',startNew,{primary:true})];
   if(profile.run&&['prep','wave','reward'].includes(run.phase))options.unshift(button('Continuar',restored,{primary:true}));
-  panel('Esquadrão da Horda','Mova o pelotão para alinhar os disparos com a horda e os portais.',options,'h1');
- }else if(phase==='prep'){
+  panel('Esquadrão da Horda','Você comanda. Toque nos portais e na horda para concentrar o fogo, e monte torres até no meio da batalha.',options,'h1');
+ }else if(phase==='prep'||(phase==='wave'&&activeSlot>=0)){
   const preview=waves[run.wave].preview;
   if(activeSlot<0){
    panel('Prepare a defesa',preview+' Toque num encaixe para construir ou reforçar.',[
@@ -539,10 +615,16 @@ function refresh(){
    panel(current?towers[current.type].name:'Escolha a torre',run.army+' soldados no pelotão. Mantenha pelo menos um na base.',choices);
   }
  }else if(phase==='reward'){
-  panel('Escolha sua recompensa','Você pode levar uma para a próxima onda.',rewards.map(reward=>
-   button(reward.title,()=>{
-    reward.apply();run.wave++;phase=run.phase='prep';run.bolts=[];activeSlot=-1;snapshot();refresh();
-   },{detail:reward.detail})));
+  run.offer??=rollRewards();
+  panel('Escolha sua recompensa','Arma atual: '+GUNS[run.gun??'rifle'].name+'.',run.offer.map(id=>{
+   const reward=rewardPool.find(r=>r.id===id);
+   const el=button(reward.title,()=>{
+    if(reward.gun)run.gun=reward.gun;else reward.apply();
+    run.offer=null;run.wave++;phase=run.phase='prep';run.bolts=[];activeSlot=-1;snapshot();refresh();
+   },{detail:reward.detail});
+   el.classList.add('card');el.insertAdjacentHTML('afterbegin',icon(reward.icon));
+   return el;
+  }));
  }else if(phase==='paused'){
   panel('Em pausa','O progresso desta missão está salvo neste navegador.',[button('Continuar',pause,{primary:true}),button('Menu',()=>{phase='menu';refresh();})]);
  }else if(phase==='lost'||phase==='won'){
@@ -561,9 +643,6 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!e.repeat){pause();return;}
  if(phase!=='wave'||!rendering)return;
  if(e.code==='Space'&&!e.repeat&&e.target.tagName!=='BUTTON'){e.preventDefault();firePulse();return;}
- if(['KeyA','KeyD','KeyW','KeyS','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)){
-  e.preventDefault();movementKeys.add(e.code);
- }
 });
 document.addEventListener('keyup',e=>movementKeys.delete(e.code));
 window.addEventListener('blur',()=>movementKeys.clear());
@@ -626,13 +705,13 @@ function updateFx(dt){
 function createScene(T){
  const world=$('world'),scene=new T.Scene(), renderer=new T.WebGLRenderer({antialias:true});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.outputColorSpace=T.SRGBColorSpace;
- renderer.setClearColor(0x96ad9d);renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+ renderer.setClearColor(0x283844);renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
  world.append(renderer.domElement);
  const camera=new T.PerspectiveCamera(52,1,.1,145);
- const viewTarget=new T.Vector3(0,-1.5,-10);
- const cameraHome=new T.Vector3(0,15.8,29);
+ const viewTarget=new T.Vector3(0,-1,-5);
+ const cameraHome=new T.Vector3(0,18,24);
  camera.position.copy(cameraHome);camera.lookAt(viewTarget);
- scene.fog=new T.FogExp2(0xa9bfaa,.012);
+ scene.fog=new T.FogExp2(0x283844,.016);
  scene.add(new T.HemisphereLight(0xfff2d8,0x7a97b0,1.83));
  const key=new T.DirectionalLight(0xffe3b2,2.4);key.position.set(-18,28,11);scene.add(key);
  const materials=new Map();
@@ -648,7 +727,7 @@ function createScene(T){
   mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);parent.add(mesh);return mesh;
  }
  const block=(color,x,y,z,w,h,d,parent)=>object(box,color,x,y,z,w,h,d,parent);
- block(0x457d85,0,-.77,-5,150,.6,140);
+ block(0x34474f,0,-.77,-5,150,.6,140);
  for(let i=0;i<62;i++){
   const side=i%2===0?1:-1;
   block(i%3===0?0x91c2b9:0x56919a,side*(14+(i%17)*1.33),-.457,-37+(i*7.13)%58,1.1+i%5,.01,.065);
@@ -671,7 +750,7 @@ function createScene(T){
  }
  for(let route=0;route<2;route++){
   for(let z=FRONT;z<BASE;z+=.75){
-   const x=routeX(route,z),piece=block(0xc1b292,x,.005,z,3.12,.028,.84);
+   const x=routeX(route,z),piece=block(0x8f8a7c,x,.005,z,3.12,.028,.84);
    piece.rotation.y=Math.atan2(routeX(route,z+.4)-x,.4);
    if(Math.round((z-FRONT)/.75)%4===0)block(0xe1d4aa,x,.027,z,.10,.012,.43);
   }
@@ -806,7 +885,7 @@ function createScene(T){
  }
  const markerNodes=new Map(),point=new T.Vector3();
  const slotButtons=slots.map((s,i)=>{
-  const btn=button('Construir',()=>{if(phase==='prep'){activeSlot=i;refresh();}});
+  const btn=button('Construir',()=>{if(['prep','wave'].includes(phase)){activeSlot=activeSlot===i?-1:i;refresh();}});
   btn.className='slot';$('tags').append(btn);return btn;
  });
  function tag(key,label,sub,x,y,z,classes='',style={}){
@@ -826,38 +905,31 @@ function createScene(T){
   point.set(x,y,z).project(camera);
   node.style.transform='translate3d('+((point.x*.5+.5)*world.clientWidth)+'px,'+((.5-point.y*.5)*world.clientHeight)+'px,0) translate(-50%,-50%) scale('+scale+')';
  }
- let dragPointer=null,dragStartX=0,dragStartY=0,dragHeroX=0,dragHeroZ=BASE;
+ const ray=new T.Raycaster(),cursor=new T.Vector2(),ground=new T.Plane(new T.Vector3(0,1,0),-.5);
  renderer.domElement.onpointerdown=event=>{
-  if(phase!=='wave'||dragPointer!==null||event.button!==0)return;
-  dragPointer=event.pointerId;dragStartX=event.clientX;dragStartY=event.clientY;
-  dragHeroX=run.heroX??0;dragHeroZ=run.heroZ??BASE;
-  renderer.domElement.setPointerCapture(event.pointerId);void enableAudio();
- };
- renderer.domElement.onpointermove=event=>{
-  if(phase!=='wave'||dragPointer!==event.pointerId)return;
+  if(phase!=='wave'||event.button!==0)return;
+  void enableAudio();
   const rect=renderer.domElement.getBoundingClientRect();
-  const worldWidth=Math.min(26,18*camera.aspect+10);
-  run.heroTarget=clamp(dragHeroX+(event.clientX-dragStartX)/rect.width*worldWidth,FIELD.left,FIELD.right);
-  run.heroTargetZ=clamp(dragHeroZ+(event.clientY-dragStartY)/rect.height*27,FIELD.front,FIELD.back);
+  cursor.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2);
+  ray.setFromCamera(cursor,camera);
+  if(ray.ray.intersectPlane(ground,point))setFocus(point.x,point.z);
  };
- function release(event){if(dragPointer===event.pointerId)dragPointer=null;}
- renderer.domElement.onpointerup=release;
- renderer.domElement.onpointercancel=release;
- renderer.domElement.onlostpointercapture=release;
+ const focusRing=new T.Mesh(new T.RingGeometry(1.5,1.85,36),new T.MeshBasicMaterial({color:0xfff27a,side:T.DoubleSide,transparent:true,opacity:.9,depthWrite:false}));
+ focusRing.rotation.x=-Math.PI/2;scene.add(focusRing);
  function resize(){
   const w=world.clientWidth,h=world.clientHeight;
   if(!w||!h)return;
   const ratio=w/h;
   camera.aspect=ratio;
   camera.fov=ratio<.85?61:50;
-  cameraHome.set(0,ratio<.85?17.6:15.8,ratio<.85?32:29);
+  cameraHome.set(0,ratio<.85?20:18,ratio<.85?28:24);
   camera.updateProjectionMatrix();renderer.setSize(w,h,false);
  }
  window.addEventListener('resize',resize);resize();
  function draw(){
   const t=run.clock;
   camera.position.copy(cameraHome);
-  camera.position.x+=(run.heroX??0)*.28+Math.sin(performance.now()*.064)*shake;
+  camera.position.x+=Math.sin(performance.now()*.064)*shake;
   camera.position.y+=Math.cos(performance.now()*.076)*shake*.54;
   camera.lookAt(viewTarget);camera.updateMatrixWorld();
   for(const mesh of meshes)mesh.count=0;
@@ -930,7 +1002,7 @@ function createScene(T){
   }
   let index=0;
   for(const n of numbers)tag('d'+index++,n.label,'',n.x,1.5+(1-n.life/.55)*2.2,n.z,'damage',{opacity:Math.min(1,n.life*5)});
-  if(phase!=='menu')tag('army',run.army+' soldados',run.boost>0?'Cadência ×2 · '+Math.ceil(run.boost)+'s':'',
+  if(phase!=='menu')tag('army',run.army+' soldados',(GUNS[run.gun??'rifle'].name)+(run.boost>0?' · ×2 '+Math.ceil(run.boost)+'s':''),
    heroX,2.72,heroZ,'army',{scale:1+.3*armyPunch/.2});
   for(const reward of gateRewards){
    const progress=1-(reward.life/.65)**2;
@@ -939,7 +1011,9 @@ function createScene(T){
   }
   slots.forEach((s,i)=>{
    const tower=run.slots[i],visual=stationMeshes[i],btn=slotButtons[i];
-   btn.hidden=phase!=='prep';btn.textContent=tower?'Nível '+tower.level:'Construir';btn.style.zIndex=1;
+   btn.hidden=!['prep','wave'].includes(phase)||tower?.level===3&&phase==='wave';
+   btn.textContent=tower?(phase==='wave'?'▲':'Nível '+tower.level):(phase==='wave'?'＋':'Construir');
+   btn.classList.toggle('mini',phase==='wave');btn.style.zIndex=1;
    if(!btn.hidden)position(btn,s.x,1.15,s.z);
    visual.turret.visible=!!tower;
    if(tower){
@@ -951,6 +1025,13 @@ function createScene(T){
    }
   });
   for(const [id,node] of markerNodes)if(!node.seen){node.remove();markerNodes.delete(id);}
+  focusRing.visible=phase==='wave'&&!!run.focus;
+  if(run.focus){
+   const pulse=1+.12*Math.sin(t*14);
+   focusRing.position.set(run.focus.x,.12,run.focus.z);
+   focusRing.scale.setScalar((run.focus.gate?.8:1.4)*pulse);
+   focusRing.material.color.set(run.focus.gate?0x5dffb0:0xfff27a);
+  }
   const boss=run.foes.find(e=>e.type==='boss'&&e.warning>0);
   warning.visible=!!boss;if(boss)warning.position.set(boss.attackX??0,.53,boss.attackZ??BASE);warning.material.opacity=.5+.32*Math.sin(t*22);
   for(const batch of Object.values(spriteBatches)){
